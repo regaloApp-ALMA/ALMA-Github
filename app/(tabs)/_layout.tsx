@@ -102,7 +102,7 @@ export default function TabLayout() {
           }}
         />
       </Tabs>
-      <View style={styles.addButtonContainer}>
+      <View style={styles.addButtonContainer} pointerEvents="box-none">
         <AddButton />
       </View>
       <AIFloatingButton />
@@ -113,9 +113,10 @@ export default function TabLayout() {
 const styles = StyleSheet.create({
   addButtonContainer: {
     position: 'absolute',
-    bottom: 50,
-    left: '50%',
-    marginLeft: -32,
+    bottom: 38,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
     zIndex: 100,
   },
   badge: {

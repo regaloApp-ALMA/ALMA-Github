@@ -104,10 +104,9 @@ const AddButton = () => {
 
 const styles = StyleSheet.create({
   container: {
-    position: 'absolute',
+    position: 'relative',
     alignItems: 'center',
-    bottom: 16,
-    alignSelf: 'center',
+    bottom: 0,
     zIndex: 100,
   },
   primaryButton: {
