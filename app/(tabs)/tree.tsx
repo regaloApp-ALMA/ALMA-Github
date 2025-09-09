@@ -59,10 +59,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     paddingTop: 0,
-    backgroundColor: '#F9FFF9', // Light green background to match the image
+    backgroundColor: '#FFFFFF',
   },
   containerDark: {
-    backgroundColor: '#121212',
+    backgroundColor: '#000000',
   },
   header: {
     paddingHorizontal: 20,
@@ -70,9 +70,9 @@ const styles = StyleSheet.create({
     paddingBottom: 0,
     alignItems: 'center',
     backgroundColor: 'transparent',
-    height: 0, // Hide the header since we have the title in the tree
+    height: 0,
     overflow: 'hidden',
-    display: 'none', // Completely hide the header
+    display: 'none',
   },
   title: {
     fontSize: 26,
