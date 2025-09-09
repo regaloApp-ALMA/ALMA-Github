@@ -15,10 +15,10 @@ const BRANCH_COLORS: Record<string, string> = {
   family: '#FF6B35',
   travel: '#4A90E2',
   work: '#E91E63',
-  education: '#F39C12',
+  education: '#9B59B6',
   friends: '#2ECC71',
-  pets: '#17A2B8',
-  hobbies: '#2ECC71',
+  pets: '#00B8D9',
+  hobbies: '#27AE60',
   vida: '#8E44AD',
 };
 
@@ -105,18 +105,23 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
     const centerX = positions.vida.x;
     const centerY = positions.vida.y;
     return {
-      family: { x: centerX - 140, y: centerY - 100 },
-      travel: { x: centerX - 140, y: centerY + 100 },
-      work: { x: centerX + 140, y: centerY - 100 },
-      friends: { x: centerX + 140, y: centerY + 100 },
-      pets: { x: centerX - 80, y: centerY - 150 },
-      hobbies: { x: centerX + 80, y: centerY - 150 },
-      education: { x: centerX, y: centerY - 180 },
+      travel: { x: centerX - 110, y: centerY + 40 },
+      family: { x: centerX - 200, y: centerY + 10 },
+      pets: { x: centerX - 40, y: centerY - 90 },
+      work: { x: centerX + 40, y: centerY - 90 },
+      friends: { x: centerX + 120, y: centerY + 20 },
+      hobbies: { x: centerX + 210, y: centerY - 10 },
+      education: { x: centerX, y: centerY - 140 },
     } as Record<string, { x: number; y: number }>;
   }, [positions.vida.x, positions.vida.y]);
 
   const renderConnection = useCallback(
-    (from: { x: number; y: number }, to: { x: number; y: number }, key: string) => {
+    (
+      from: { x: number; y: number },
+      to: { x: number; y: number },
+      key: string,
+      color: string = '#6B4F2A'
+    ) => {
       const distance = Math.sqrt(Math.pow(to.x - from.x, 2) + Math.pow(to.y - from.y, 2));
       const angle = Math.atan2(to.y - from.y, to.x - from.x);
       return (
@@ -127,10 +132,10 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
               position: 'absolute',
               opacity: branchesOpacity,
               width: distance,
-              height: 4,
+              height: 3,
               left: from.x,
-              top: from.y - 2,
-              backgroundColor: '#6B4F2A',
+              top: from.y - 1.5,
+              backgroundColor: color,
               borderRadius: 2,
               transform: [{ rotate: `${angle}rad` }],
             },
@@ -141,7 +146,7 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
     [branchesOpacity]
   );
 
-  const actualRoots = useMemo(() => tree.roots.slice(0, 3), [tree.roots]);
+  const actualRoots = useMemo(() => tree.roots.slice(0, 5), [tree.roots]);
 
   return (
     <ScrollView
@@ -204,14 +209,16 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
                 x: positions.vida.x + Math.cos(angle) * offset,
                 y: positions.vida.y + Math.sin(angle) * offset,
               };
+              const lineColor = BRANCH_COLORS[branch.categoryId] ?? branch.color ?? '#6B4F2A';
               return renderConnection(
                 from,
                 { x: position.x, y: position.y },
-                `conn_${branch.id}`
+                `conn_${branch.id}`,
+                lineColor
               );
             }
             return null;
-          })}
+          })
 
           <Animated.View
             style={[
@@ -369,7 +376,7 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
                       top: branchY - 32.5,
                       transform: [
                         {
-                          scale: ((newBranchAnimations.get(branch.id) ?? new Animated.Value(1)) as unknown) as number,
+                          scale: (newBranchAnimations.get(branch.id) ?? new Animated.Value(1)),
                         },
                       ],
                     },
@@ -424,6 +431,7 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
                             top: fruitY - 12,
                           },
                         ]}
+                        testID={`fruit-${fruit.id}`}
                       >
                         <TouchableOpacity
                           style={[
@@ -458,9 +466,9 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
             {actualRoots.map((root, index) => {
               const total = actualRoots.length;
               const baseY = positions.trunk.y + 60;
-              const spread = Math.PI / 5;
+              const spread = Math.PI / 3;
               const angle = -Math.PI / 2 + ((index - (total - 1) / 2) * spread) / Math.max(total - 1, 1);
-              const length = 95;
+              const length = 110;
               const endX = positions.trunk.x + Math.cos(angle) * length;
               const endY = baseY + Math.sin(angle) * length;
 
@@ -473,8 +481,8 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
                         left: positions.trunk.x,
                         top: baseY,
                         width: Math.sqrt(Math.pow(endX - positions.trunk.x, 2) + Math.pow(endY - baseY, 2)),
-                        height: 4,
-                        backgroundColor: '#6B4F2A',
+                        height: 3,
+                        backgroundColor: '#8B4513',
                         borderRadius: 2,
                         transform: [
                           { rotate: `${Math.atan2(endY - baseY, endX - positions.trunk.x)}rad` },
