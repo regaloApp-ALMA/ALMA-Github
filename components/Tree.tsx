@@ -127,11 +127,11 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
               position: 'absolute',
               opacity: branchesOpacity,
               width: distance,
-              height: 3,
+              height: 4,
               left: from.x,
-              top: from.y - 1.5,
-              backgroundColor: '#8B4513',
-              borderRadius: 1.5,
+              top: from.y - 2,
+              backgroundColor: '#6B4F2A',
+              borderRadius: 2,
               transform: [{ rotate: `${angle}rad` }],
             },
           ]}
@@ -198,8 +198,14 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
             const branchPositions = getBranchPositions();
             const position = branchPositions[branch.categoryId];
             if (position) {
+              const angle = Math.atan2(position.y - positions.vida.y, position.x - positions.vida.x);
+              const offset = 44;
+              const from = {
+                x: positions.vida.x + Math.cos(angle) * offset,
+                y: positions.vida.y + Math.sin(angle) * offset,
+              };
               return renderConnection(
-                { x: positions.vida.x, y: positions.vida.y },
+                from,
                 { x: position.x, y: position.y },
                 `conn_${branch.id}`
               );
@@ -264,7 +270,7 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
                         top: branchY - 32.5,
                         transform: [
                           {
-                            scale: ((newBranchAnimations.get(branch.id) ?? new Animated.Value(1)) as unknown) as number,
+                            scale: (newBranchAnimations.get(branch.id) ?? new Animated.Value(1)),
                           },
                         ],
                       },
@@ -448,12 +454,15 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
           })}
 
           <Animated.View style={[{ opacity: rootsOpacity }]}>
+            
             {actualRoots.map((root, index) => {
-              const totalRoots = actualRoots.length;
-              const rootAngle = ((index - (totalRoots - 1) / 2) * Math.PI) / 6;
-              const rootDistance = 60;
-              const rootX = positions.trunk.x + rootDistance * Math.sin(rootAngle);
-              const rootY = positions.trunk.y + 80;
+              const total = actualRoots.length;
+              const baseY = positions.trunk.y + 60;
+              const spread = Math.PI / 5;
+              const angle = -Math.PI / 2 + ((index - (total - 1) / 2) * spread) / Math.max(total - 1, 1);
+              const length = 95;
+              const endX = positions.trunk.x + Math.cos(angle) * length;
+              const endY = baseY + Math.sin(angle) * length;
 
               return (
                 <React.Fragment key={root.id}>
@@ -462,28 +471,25 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
                       {
                         position: 'absolute',
                         left: positions.trunk.x,
-                        top: positions.trunk.y + 60,
-                        width: Math.sqrt(
-                          Math.pow(rootX - positions.trunk.x, 2) + Math.pow(rootY - positions.trunk.y - 60, 2)
-                        ),
-                        height: 3,
-                        backgroundColor: '#8B4513',
-                        borderRadius: 1.5,
+                        top: baseY,
+                        width: Math.sqrt(Math.pow(endX - positions.trunk.x, 2) + Math.pow(endY - baseY, 2)),
+                        height: 4,
+                        backgroundColor: '#6B4F2A',
+                        borderRadius: 2,
                         transform: [
-                          {
-                            rotate: `${Math.atan2(rootY - positions.trunk.y - 60, rootX - positions.trunk.x)}rad`,
-                          },
+                          { rotate: `${Math.atan2(endY - baseY, endX - positions.trunk.x)}rad` },
                         ],
                       },
                     ]}
+                    testID={`root-connector-${root.id}`}
                   />
 
                   <TouchableOpacity
                     style={[
                       {
                         position: 'absolute',
-                        left: rootX - 15,
-                        top: rootY - 15,
+                        left: endX - 15,
+                        top: endY - 15,
                         width: 30,
                         height: 30,
                         borderRadius: 15,
