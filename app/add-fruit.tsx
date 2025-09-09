@@ -36,12 +36,12 @@ export default function AddFruitScreen() {
       emotions: emotions.split(',').map(emotion => emotion.trim()).filter(emotion => emotion),
       isShared: false,
       position: {
-        x: Math.random() * 0.6 + 0.2, // Random position between 0.2 and 0.8
+        x: Math.random() * 0.6 + 0.2,
         y: Math.random() * 0.6 + 0.2,
       },
     });
     
-    router.back();
+    router.replace('/(tabs)/tree');
   };
 
   const handleAddImage = () => {
