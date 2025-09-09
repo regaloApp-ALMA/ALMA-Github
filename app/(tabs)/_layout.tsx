@@ -114,9 +114,7 @@ const styles = StyleSheet.create({
   addButtonContainer: {
     position: 'absolute',
     bottom: 38,
-    left: 0,
-    right: 0,
-    alignItems: 'center',
+    left: screenWidth * 0.5 - 32, // Centrado exacto
     zIndex: 100,
   },
   badge: {
