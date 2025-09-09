@@ -220,6 +220,8 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
             return null;
           })
 
+          }
+
           <Animated.View
             style={[
               {
