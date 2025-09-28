@@ -1,40 +1,88 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, Text, Modal, Dimensions } from 'react-native';
-import { Plus, Leaf, Apple, Clock, Sparkles } from 'lucide-react-native';
+import { View, StyleSheet, TouchableOpacity, Text, Modal, Animated } from 'react-native';
+import { Plus, Leaf, Apple, Clock, Sparkles, X } from 'lucide-react-native';
 import colors from '@/constants/colors';
 import { useRouter } from 'expo-router';
 import { useThemeStore } from '@/stores/themeStore';
 
-const { width: screenWidth } = Dimensions.get('window');
-
 const AddButton = () => {
   const router = useRouter();
   const [showModal, setShowModal] = useState(false);
+  const [rotateAnim] = useState(new Animated.Value(0));
   const { theme } = useThemeStore();
   const isDarkMode = theme === 'dark';
 
   const toggleMenu = () => {
-    setShowModal(!showModal);
+    if (!showModal) {
+      setShowModal(true);
+      Animated.timing(rotateAnim, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      Animated.timing(rotateAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }).start(() => {
+        setShowModal(false);
+      });
+    }
   };
 
   const handleAddBranch = () => {
-    setShowModal(false);
-    router.push('/add-branch-options');
+    Animated.timing(rotateAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowModal(false);
+      router.push('/add-branch-options');
+    });
   };
 
   const handleAddMemory = () => {
-    setShowModal(false);
-    router.push('/add-memory-options');
+    Animated.timing(rotateAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowModal(false);
+      router.push('/add-memory-options');
+    });
   };
 
   const handleTimeCapsule = () => {
-    setShowModal(false);
-    router.push('/time-capsule');
+    Animated.timing(rotateAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowModal(false);
+      router.push('/time-capsule');
+    });
   };
 
   const handleAIAssistant = () => {
-    setShowModal(false);
-    router.push('/ai-assistant');
+    Animated.timing(rotateAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowModal(false);
+      router.push('/ai-assistant');
+    });
+  };
+
+  const handleCancel = () => {
+    Animated.timing(rotateAnim, {
+      toValue: 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowModal(false);
+    });
   };
 
   return (
@@ -47,7 +95,18 @@ const AddButton = () => {
         accessibilityRole="button"
         accessibilityLabel="Abrir menú de añadir"
       >
-        <Plus size={28} color={colors.white} />
+        <Animated.View
+          style={[styles.iconContainer, {
+            transform: [{
+              rotate: rotateAnim.interpolate({
+                inputRange: [0, 1],
+                outputRange: ['0deg', '45deg'],
+              }),
+            }],
+          }]}
+        >
+          <Plus size={28} color={colors.white} />
+        </Animated.View>
       </TouchableOpacity>
 
       <Modal
@@ -56,9 +115,26 @@ const AddButton = () => {
         animationType="fade"
         onRequestClose={() => setShowModal(false)}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, isDarkMode && styles.modalContentDark]}>
-            <Text style={[styles.modalTitle, isDarkMode && styles.modalTitleDark]}>¿Qué quieres añadir?</Text>
+        <TouchableOpacity 
+          style={styles.modalOverlay} 
+          activeOpacity={1} 
+          onPress={handleCancel}
+        >
+          <TouchableOpacity 
+            style={[styles.modalContent, isDarkMode && styles.modalContentDark]} 
+            activeOpacity={1}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, isDarkMode && styles.modalTitleDark]}>¿Qué quieres añadir?</Text>
+              <TouchableOpacity 
+                style={[styles.closeButton, isDarkMode && styles.closeButtonDark]} 
+                onPress={handleCancel}
+                testID="close-modal"
+              >
+                <X size={20} color={isDarkMode ? colors.white : colors.text} />
+              </TouchableOpacity>
+            </View>
             
             <TouchableOpacity style={[styles.modalOption, isDarkMode && styles.modalOptionDark]} onPress={handleAddBranch} testID="add-branch">
               <View style={[styles.optionIcon, { backgroundColor: isDarkMode ? colors.primary + '40' : colors.primaryLight }]}>
@@ -100,15 +176,8 @@ const AddButton = () => {
               </View>
             </TouchableOpacity>
             
-            <TouchableOpacity 
-              style={[styles.cancelButton, isDarkMode && styles.cancelButtonDark]} 
-              onPress={() => setShowModal(false)}
-              testID="add-cancel"
-            >
-              <Text style={[styles.cancelButtonText, isDarkMode && styles.cancelButtonTextDark]}>Cancelar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
     </View>
   );
@@ -129,12 +198,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-    borderWidth: 3,
-    borderColor: '#F9F6E8',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 12,
+    borderWidth: 4,
+    borderColor: colors.white,
   },
   primaryButtonDark: {
     backgroundColor: colors.primary,
@@ -142,32 +211,51 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 20,
   },
   modalContent: {
-    width: screenWidth * 0.9,
+    width: '100%',
     maxWidth: 400,
     backgroundColor: colors.white,
-    borderRadius: 20,
-    padding: 24,
+    borderRadius: 24,
+    padding: 0,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 16,
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 20,
   },
   modalContentDark: {
     backgroundColor: '#1E1E1E',
     shadowColor: '#000',
   },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 16,
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.lightGray,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeButtonDark: {
+    backgroundColor: '#333',
+  },
   modalTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 'bold',
     color: colors.text,
-    marginBottom: 24,
-    textAlign: 'center',
+    flex: 1,
   },
   modalTitleDark: {
     color: colors.white,
@@ -175,7 +263,8 @@ const styles = StyleSheet.create({
   modalOption: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 18,
+    paddingVertical: 20,
+    paddingHorizontal: 24,
     borderBottomWidth: 1,
     borderBottomColor: colors.lightGray,
   },
@@ -183,9 +272,9 @@ const styles = StyleSheet.create({
     borderBottomColor: '#333',
   },
   optionIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
@@ -195,8 +284,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   optionTitle: {
-    fontSize: 17,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '700',
     color: colors.text,
     marginBottom: 4,
   },
@@ -204,35 +293,16 @@ const styles = StyleSheet.create({
     color: colors.white,
   },
   optionDescription: {
-    fontSize: 14,
+    fontSize: 15,
     color: colors.textLight,
-    lineHeight: 20,
+    lineHeight: 22,
   },
   optionDescriptionDark: {
     color: '#AAA',
   },
-  aiIcon: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: colors.secondary,
-  },
-  cancelButton: {
-    marginTop: 24,
-    paddingVertical: 14,
+  iconContainer: {
     alignItems: 'center',
-    borderRadius: 12,
-    backgroundColor: colors.lightGray,
-  },
-  cancelButtonDark: {
-    backgroundColor: '#333',
-  },
-  cancelButtonText: {
-    fontSize: 16,
-    color: colors.text,
-    fontWeight: '600',
-  },
-  cancelButtonTextDark: {
-    color: colors.white,
+    justifyContent: 'center',
   },
 });
 
