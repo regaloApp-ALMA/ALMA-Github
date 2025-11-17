@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert 
 import { Stack, useRouter } from 'expo-router';
 import { useGiftStore } from '@/stores/giftStore';
 import { useTreeStore } from '@/stores/treeStore';
+import { useUserStore } from '@/stores/userStore';
 import colors from '@/constants/colors';
 import { useThemeStore } from '@/stores/themeStore';
 import { Gift, Clock, Send, Heart, Users } from 'lucide-react-native';
@@ -17,6 +18,7 @@ export default function CreateGiftScreen() {
   
   const { createGift } = useGiftStore();
   const { tree } = useTreeStore();
+  const { user } = useUserStore();
   const { theme } = useThemeStore();
   const router = useRouter();
   const isDarkMode = theme === 'dark';
@@ -33,12 +35,13 @@ export default function CreateGiftScreen() {
     }
 
     const gift = {
-      title: title.trim(),
-      description: description.trim(),
-      recipientEmail: recipientEmail.trim(),
-      type: giftType!,
-      openDate: giftType === 'timeCapsule' ? openDate : undefined,
-      branchId: selectedBranch || undefined,
+      type: giftType === 'timeCapsule' ? ('timeCapsule' as const) : ('branch' as const),
+      senderId: user?.id || 'unknown',
+      senderName: user?.name || 'Desconocido',
+      recipientId: recipientEmail.trim(),
+      message: description.trim(),
+      contentId: selectedBranch || `content_${Date.now()}`,
+      unlockDate: giftType === 'timeCapsule' ? openDate : undefined,
     };
 
     createGift(gift);
