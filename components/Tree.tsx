@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { View, Dimensions, TouchableOpacity, Text, Animated, ScrollView, StyleSheet } from 'react-native';
+import { View, Dimensions, TouchableOpacity, Text, ScrollView, StyleSheet } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
 import { useTreeStore } from '@/stores/treeStore';
 import colors from '@/constants/colors';
 import { BranchType, FruitType, RootType } from '@/types/tree';
@@ -8,7 +9,14 @@ import { useThemeStore } from '@/stores/themeStore';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const CANVAS_WIDTH = screenWidth;
-const CANVAS_HEIGHT = screenHeight * 0.9;
+const BASE_CANVAS_HEIGHT = screenHeight * 1.1;
+const BRANCHES_PER_LEVEL = 2;
+const LEVEL_SPACING = 150;
+const BRANCH_BUTTON_SIZE = 96;
+const BRANCH_RADIUS = BRANCH_BUTTON_SIZE / 2;
+const FRUIT_SIZE = 28;
+const TRUNK_WIDTH = 28;
+const TRUNK_COLOR = '#8C5A2F';
 
 const BRANCH_COLORS: Record<string, string> = {
   family: '#FF6B35',
@@ -21,14 +29,25 @@ const BRANCH_COLORS: Record<string, string> = {
   vida: '#8E44AD',
 };
 
-const TRUNK_COLOR = '#8B4513';
-const BRANCH_CONNECTOR_COLOR = '#A0522D';
-const ROOT_COLOR = '#654321';
-
 type TreeProps = {
   onBranchPress?: (branch: BranchType) => void;
   onFruitPress?: (fruit: FruitType) => void;
   onRootPress?: (root: RootType) => void;
+};
+
+type ArrangedBranch = {
+  branch: BranchType;
+  anchorX: number;
+  anchorY: number;
+  centerX: number;
+  centerY: number;
+  side: number;
+};
+
+type FruitLayout = {
+  fruit: FruitType;
+  x: number;
+  y: number;
 };
 
 const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
@@ -37,398 +56,468 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
   const { theme } = useThemeStore();
   const isDarkMode = theme === 'dark';
 
-  const center = useMemo(() => ({ x: CANVAS_WIDTH * 0.5, y: CANVAS_HEIGHT * 0.45 }), []);
-
-  const arrangedBranches = useMemo(() => {
-    const list = tree.branches;
-    const count = list.length;
-    const baseRadius = Math.min(CANVAS_WIDTH, CANVAS_HEIGHT) * 0.28;
-    return list.map((b, i) => {
-      const angle = (i / Math.max(count, 1)) * Math.PI * 2 - Math.PI / 2;
-      const radiusVariation = 1 + (Math.sin(i * 2.5) * 0.15); // Organic variation
-      const actualRadius = baseRadius * radiusVariation;
-      const x = center.x + actualRadius * Math.cos(angle);
-      const y = center.y + actualRadius * Math.sin(angle);
-      return { b, x, y, angle, radius: actualRadius };
+  const sortedBranches = useMemo(() => {
+    const ordered = [...tree.branches].sort((a, b) => {
+      const aDate = new Date(a.createdAt).getTime();
+      const bDate = new Date(b.createdAt).getTime();
+      return aDate - bDate;
     });
-  }, [tree.branches, center.x, center.y]);
+    if (__DEV__) {
+      console.log('[Tree] Branch ordering', ordered.map((item) => item.id));
+    }
+    return ordered;
+  }, [tree.branches]);
+
+  const layout = useMemo(() => {
+    const totalBranches = sortedBranches.length;
+    const levels = Math.max(1, Math.ceil(totalBranches / BRANCHES_PER_LEVEL));
+    const trunkBottom = BASE_CANVAS_HEIGHT * 0.78;
+    const trunkHeight = Math.max(LEVEL_SPACING * (levels + 0.6), BASE_CANVAS_HEIGHT * 0.45);
+    const trunkTop = trunkBottom - trunkHeight;
+    const anchorBaseOffset = 48;
+    const centerX = CANVAS_WIDTH * 0.5;
+
+    const arranged: ArrangedBranch[] = sortedBranches.map((branch, index) => {
+      const level = Math.floor(index / BRANCHES_PER_LEVEL);
+      const side = index % BRANCHES_PER_LEVEL === 0 ? -1 : 1;
+      const anchorY = trunkBottom - LEVEL_SPACING * (level + 0.6);
+      const spreadBase = CANVAS_WIDTH * 0.26;
+      const spreadStep = 36;
+      const horizontalOffset = spreadBase + level * spreadStep;
+      const centerY = Math.max(anchorY - anchorBaseOffset, trunkTop + 90);
+      const centerXOffset = centerX + side * horizontalOffset;
+      return {
+        branch,
+        anchorX: centerX,
+        anchorY,
+        centerX: centerXOffset,
+        centerY,
+        side,
+      };
+    });
+
+    const canvasHeight = Math.max(BASE_CANVAS_HEIGHT, trunkHeight + screenHeight * 0.4);
+    if (__DEV__) {
+      console.log('[Tree] Layout metrics', {
+        totalBranches,
+        levels,
+        trunkTop,
+        trunkBottom,
+        canvasHeight,
+      });
+    }
+    return {
+      arranged,
+      trunkBottom,
+      trunkTop,
+      trunkHeight,
+      canvasHeight,
+    };
+  }, [sortedBranches]);
 
   const handleBranchPress = (branch: BranchType) => {
-    if (onBranchPress) return onBranchPress(branch);
+    if (onBranchPress) {
+      onBranchPress(branch);
+      return;
+    }
     router.push({ pathname: '/branch-details', params: { id: branch.id } });
   };
 
   const handleFruitPress = (fruit: FruitType) => {
-    if (onFruitPress) return onFruitPress(fruit);
+    if (onFruitPress) {
+      onFruitPress(fruit);
+      return;
+    }
     router.push({ pathname: '/fruit-details', params: { id: fruit.id } });
   };
 
   const handleRootPress = (root: RootType) => {
-    if (onRootPress) return onRootPress(root);
+    if (onRootPress) {
+      onRootPress(root);
+      return;
+    }
     router.push({ pathname: '/root-details', params: { id: root.id } });
   };
 
-  const actualRoots = useMemo(() => tree.roots.slice(0, 5), [tree.roots]);
+  const fruitLayouts = useMemo(() => {
+    const mapping: Record<string, FruitLayout[]> = {};
+    layout.arranged.forEach((item) => {
+      const fruitList = tree.fruits.filter((fruit) => fruit.branchId === item.branch.id);
+      if (fruitList.length === 0) {
+        mapping[item.branch.id] = [];
+        return;
+      }
+      const perRow = 3;
+      const rowGap = 38;
+      const columnGap = 36;
+      const cluster: FruitLayout[] = fruitList.map((fruit, index) => {
+        const row = Math.floor(index / perRow);
+        const column = index % perRow;
+        const columnOffset = column - (perRow - 1) / 2;
+        const x = item.centerX + columnOffset * columnGap;
+        const y = item.centerY - BRANCH_RADIUS - 40 - row * rowGap;
+        return {
+          fruit,
+          x,
+          y,
+        };
+      });
+      mapping[item.branch.id] = cluster;
+    });
+    if (__DEV__) {
+      console.log('[Tree] Fruit layout computed', Object.keys(mapping));
+    }
+    return mapping;
+  }, [layout.arranged, tree.fruits]);
+
+  const rootsToDisplay = useMemo(() => tree.roots.slice(0, 6), [tree.roots]);
+
+  const backgroundColor = isDarkMode ? '#0C1117' : '#F5F1E6';
+  const canopyColor = isDarkMode ? 'rgba(46, 125, 50, 0.25)' : 'rgba(129, 199, 132, 0.35)';
+  const trunkShadowColor = isDarkMode ? '#000' : '#2B170A';
 
   return (
     <ScrollView
-      style={[{ flex: 1, backgroundColor: isDarkMode ? '#000' : '#f8f9fa' }]}
-      contentContainerStyle={{ minHeight: screenHeight, alignItems: 'center', paddingBottom: 40 }}
+      style={[styles.scroll, { backgroundColor }]}
+      contentContainerStyle={{ minHeight: layout.canvasHeight, alignItems: 'center', paddingBottom: 120 }}
       showsVerticalScrollIndicator={false}
+      testID="tree-scroll"
     >
-      <View style={[{ flex: 1, backgroundColor: isDarkMode ? '#000' : '#f8f9fa' }]} testID="tree-screen">
-        <View style={[{ width: CANVAS_WIDTH, height: CANVAS_HEIGHT, position: 'relative' }]} testID="tree-canvas">
-          <View style={[stylesLocal.titleContainer]} testID="tree-title">
-            <Text style={[stylesLocal.titleText, { color: isDarkMode ? '#fff' : '#2c3e50' }]}>Mi Árbol de Vida</Text>
-            <Text style={[stylesLocal.subtitleText, { color: isDarkMode ? '#aaa' : '#7f8c8d' }]}>Cada rama cuenta tu historia</Text>
-          </View>
-
-          {/* Tronco principal */}
-          <View
-            style={[
-              stylesLocal.mainTrunk,
-              { 
-                left: center.x - 8, 
-                top: center.y + 45, 
-                height: CANVAS_HEIGHT * 0.35 
-              },
-            ]}
-            pointerEvents="none"
-          />
-
-          {/* Conexiones orgánicas desde el centro a cada rama */}
-          {arrangedBranches.map(({ b, x, y, angle, radius }) => {
-            const dx = x - center.x;
-            const dy = y - center.y;
-            const length = Math.max(radius - 45, 0);
-            const rotation = Math.atan2(dy, dx);
-            const thickness = 3 + Math.random() * 2; // Variación orgánica
+      <View style={styles.backgroundCanopy} pointerEvents="none">
+        <View style={[styles.canopyGlow, { backgroundColor: canopyColor }]} />
+      </View>
+      <View style={[styles.canvas, { width: CANVAS_WIDTH, height: layout.canvasHeight }]} testID="tree-canvas">
+        <Text style={[styles.title, { color: isDarkMode ? '#E8EFEB' : '#1F2A24' }]} testID="tree-title">
+          Mi Árbol de Vida
+        </Text>
+        <Text style={[styles.subtitle, { color: isDarkMode ? '#9FB4AA' : '#5E6F65' }]}>
+          Cada rama suma a tu legado
+        </Text>
+        <View
+          style={[
+            styles.trunk,
+            {
+              left: CANVAS_WIDTH * 0.5 - TRUNK_WIDTH / 2,
+              top: layout.trunkTop,
+              height: layout.trunkHeight,
+              backgroundColor: TRUNK_COLOR,
+              shadowColor: trunkShadowColor,
+            },
+          ]}
+          testID="tree-trunk"
+          pointerEvents="none"
+        />
+        <Svg
+          width={CANVAS_WIDTH}
+          height={layout.canvasHeight}
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        >
+          {layout.arranged.map((item) => {
+            const controlX = item.anchorX + item.side * Math.abs(item.centerX - item.anchorX) * 0.55;
+            const controlY = item.centerY - 50;
+            const path = `M ${item.anchorX} ${item.anchorY} Q ${controlX} ${controlY} ${item.centerX} ${item.centerY}`;
             return (
-              <View
-                key={`conn-${b.id}`}
-                style={[
-                  stylesLocal.branchConnector,
-                  {
-                    left: center.x,
-                    top: center.y - thickness/2,
-                    width: length,
-                    height: thickness,
-                    transform: [{ rotateZ: `${rotation}rad` }],
-                  },
-                ]}
-                pointerEvents="none"
+              <Path
+                key={`connector-${item.branch.id}`}
+                d={path}
+                stroke={TRUNK_COLOR}
+                strokeWidth={10}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                fill="transparent"
+                opacity={0.9}
               />
             );
           })}
-
-          {/* Centro del árbol - Núcleo de vida */}
-          <Animated.View
-            testID="tree-center"
-            style={[
-              stylesLocal.treeCenter,
-              {
-                left: center.x - 45,
-                top: center.y - 45,
-              },
-            ]}
-          >
-            <View style={stylesLocal.centerInner}>
-              <Text style={stylesLocal.centerText}>🌳</Text>
-              <Text style={stylesLocal.centerLabel}>Vida</Text>
-            </View>
-          </Animated.View>
-
-          {/* Ramas y frutos */}
-          {arrangedBranches.map(({ b, x, y }) => {
-            const fruitList = tree.fruits.filter((f) => f.branchId === b.id);
-            const color = BRANCH_COLORS[b.categoryId] ?? b.color ?? colors.primary;
-            const fruitCount = fruitList.length;
-            return (
-              <React.Fragment key={b.id}>
-                {/* Rama principal */}
-                <View
+        </Svg>
+        {layout.arranged.map((item) => {
+          const fruitsForBranch = fruitLayouts[item.branch.id] ?? [];
+          const branchColor = BRANCH_COLORS[item.branch.categoryId] ?? item.branch.color ?? colors.primary;
+          const fruitCount = fruitsForBranch.length;
+          return (
+            <React.Fragment key={item.branch.id}>
+              <View
+                style={[
+                  styles.branchCluster,
+                  {
+                    left: item.centerX - BRANCH_RADIUS,
+                    top: item.centerY - BRANCH_RADIUS,
+                  },
+                ]}
+              >
+                <TouchableOpacity
                   style={[
-                    stylesLocal.branchContainer,
+                    styles.branchButton,
                     {
-                      left: x - 40,
-                      top: y - 40,
+                      backgroundColor: branchColor,
+                      shadowColor: branchColor,
                     },
                   ]}
+                  onPress={() => handleBranchPress(item.branch)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Abrir rama ${item.branch.name}`}
+                  testID={`branch-${item.branch.id}`}
+                >
+                  <Text style={styles.branchName} numberOfLines={2}>
+                    {item.branch.name}
+                  </Text>
+                  {fruitCount > 0 && (
+                    <View style={styles.branchCounter} testID={`branch-${item.branch.id}-count`}>
+                      <Text style={styles.branchCounterText}>{fruitCount}</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              </View>
+              {fruitsForBranch.map((fruitLayout) => (
+                <View
+                  key={fruitLayout.fruit.id}
+                  style={[
+                    styles.fruitNode,
+                    {
+                      left: fruitLayout.x - FRUIT_SIZE / 2,
+                      top: fruitLayout.y - FRUIT_SIZE / 2,
+                    },
+                  ]}
+                  testID={`fruit-${fruitLayout.fruit.id}`}
                 >
                   <TouchableOpacity
                     style={[
-                      stylesLocal.branchButton,
-                      { backgroundColor: color },
+                      styles.fruitButton,
+                      {
+                        backgroundColor: branchColor,
+                        shadowColor: branchColor,
+                      },
                     ]}
-                    onPress={() => handleBranchPress(b)}
+                    onPress={() => handleFruitPress(fruitLayout.fruit)}
                     accessibilityRole="button"
-                    accessibilityLabel={`Abrir rama ${b.name}`}
-                    testID={`branch-${b.id}`}
+                    accessibilityLabel={`Abrir recuerdo ${fruitLayout.fruit.title}`}
+                    testID={`fruit-${fruitLayout.fruit.id}-button`}
                   >
-                    <Text style={stylesLocal.branchText}>
-                      {b.name.length > 8 ? b.name.substring(0, 8) + '…' : b.name}
-                    </Text>
-                    {fruitCount > 0 && (
-                      <View style={stylesLocal.fruitCounter}>
-                        <Text style={stylesLocal.fruitCounterText}>{fruitCount}</Text>
-                      </View>
-                    )}
+                    <Text style={styles.fruitEmoji}>🍃</Text>
                   </TouchableOpacity>
                 </View>
-
-                {/* Frutos alrededor de cada rama */}
-                {fruitList.map((fruit, fruitIndex) => {
-                  const ringRadius = 60 + (fruitIndex % 2) * 15; // Anillos concéntricos
-                  const angle = (fruitIndex / Math.max(fruitCount, 1)) * Math.PI * 2 + (fruitIndex * 0.5);
-                  const fx = x + ringRadius * Math.cos(angle);
-                  const fy = y + ringRadius * Math.sin(angle);
-                  return (
-                    <View
-                      key={fruit.id}
-                      style={[stylesLocal.fruitWrapper, { left: fx - 12, top: fy - 12 }]}
-                      testID={`fruit-${fruit.id}`}
-                    >
-                      <TouchableOpacity
-                        style={[
-                          stylesLocal.fruitDot,
-                          { backgroundColor: color },
-                        ]}
-                        onPress={() => handleFruitPress(fruit)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Abrir recuerdo ${fruit.title}`}
-                        testID={`fruit-${fruit.id}-button`}
-                      >
-                        <Text style={stylesLocal.fruitEmoji}>🍎</Text>
-                      </TouchableOpacity>
-                    </View>
-                  );
-                })}
-              </React.Fragment>
-            );
-          })}
-
-          {/* Sistema de raíces mejorado */}
-          <View style={stylesLocal.rootsContainer}>
-            <Text style={[stylesLocal.rootsTitle, { color: isDarkMode ? '#fff' : '#2c3e50' }]}>Raíces Familiares</Text>
-            <View style={stylesLocal.rootsGrid}>
-              {actualRoots.map((root, index) => (
-                <TouchableOpacity
-                  key={root.id}
-                  style={[
-                    stylesLocal.rootCard,
-                    { backgroundColor: isDarkMode ? '#2c3e50' : '#fff' }
-                  ]}
-                  onPress={() => handleRootPress(root)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Ver raíz ${root.name}`}
-                  testID={`root-${root.id}`}
-                >
-                  <Text style={stylesLocal.rootEmoji}>🌱</Text>
-                  <Text style={[stylesLocal.rootCardText, { color: isDarkMode ? '#fff' : '#2c3e50' }]}>
+              ))}
+            </React.Fragment>
+          );
+        })}
+        <View
+          style={[
+            styles.rootSection,
+            {
+              top: layout.trunkBottom + 24,
+              backgroundColor: isDarkMode ? '#101720' : '#FDFBF5',
+              borderColor: isDarkMode ? '#1D2A33' : '#E0D7C8',
+            },
+          ]}
+          testID="root-section"
+        >
+          <Text style={[styles.rootTitle, { color: isDarkMode ? '#E5DED3' : '#2F1A0F' }]}>Raíces familiares</Text>
+          <View style={styles.rootList}>
+            {rootsToDisplay.map((root) => (
+              <TouchableOpacity
+                key={root.id}
+                style={[
+                  styles.rootCard,
+                  {
+                    backgroundColor: isDarkMode ? '#18222D' : '#FFFFFF',
+                    shadowColor: isDarkMode ? '#000' : '#8A714E',
+                  },
+                ]}
+                onPress={() => handleRootPress(root)}
+                accessibilityRole="button"
+                accessibilityLabel={`Ver raíz ${root.name}`}
+                testID={`root-${root.id}`}
+              >
+                <Text style={[styles.rootEmoji, { color: isDarkMode ? '#C8E6C9' : '#2E7D32' }]}>🌱</Text>
+                <View style={styles.rootTextWrapper}>
+                  <Text style={[styles.rootName, { color: isDarkMode ? '#E6E0D6' : '#3A2A1D' }]} numberOfLines={1}>
                     {root.name}
                   </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+                  <Text style={[styles.rootRelation, { color: isDarkMode ? '#9FB4AA' : '#8C7763' }]} numberOfLines={1}>
+                    {root.relation}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+            {rootsToDisplay.length === 0 && (
+              <Text style={[styles.emptyRoots, { color: isDarkMode ? '#94A397' : '#8C7B65' }]}>Añade tus raíces para completar el legado</Text>
+            )}
           </View>
-
-          {/* Raíces subterráneas decorativas */}
-          {[...Array(3)].map((_, i) => (
-            <View
-              key={`root-line-${i}`}
-              style={[
-                stylesLocal.rootLine,
-                {
-                  left: center.x - 20 + i * 20,
-                  top: center.y + 80 + i * 30,
-                  width: 40 + i * 10,
-                  transform: [{ rotateZ: `${(i - 1) * 15}deg` }],
-                },
-              ]}
-              pointerEvents="none"
-            />
-          ))}
         </View>
       </View>
     </ScrollView>
   );
 };
 
-const stylesLocal = StyleSheet.create({
-  titleContainer: {
+const styles = StyleSheet.create({
+  scroll: {
+    flex: 1,
+  },
+  backgroundCanopy: {
     position: 'absolute',
-    top: 30,
+    top: 0,
     left: 0,
     right: 0,
+    height: BASE_CANVAS_HEIGHT * 0.55,
     alignItems: 'center',
-    zIndex: 10,
+    justifyContent: 'flex-start',
   },
-  titleText: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    marginBottom: 4,
+  canopyGlow: {
+    width: CANVAS_WIDTH * 0.9,
+    height: BASE_CANVAS_HEIGHT * 0.4,
+    borderRadius: CANVAS_WIDTH * 0.45,
+    transform: [{ scaleX: 1.1 }],
+    opacity: 0.9,
+    marginTop: 40,
   },
-  subtitleText: {
+  canvas: {
+    position: 'relative',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    paddingTop: 64,
+  },
+  title: {
+    fontSize: 30,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  subtitle: {
     fontSize: 16,
-    fontStyle: 'italic',
+    marginTop: 8,
+    marginBottom: 36,
   },
-  mainTrunk: {
+  trunk: {
     position: 'absolute',
-    width: 16,
-    backgroundColor: TRUNK_COLOR,
-    borderRadius: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 6,
+    width: 28,
+    borderRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.35,
+    shadowRadius: 16,
+    elevation: 20,
   },
-  branchConnector: {
+  branchCluster: {
     position: 'absolute',
-    backgroundColor: BRANCH_CONNECTOR_COLOR,
-    borderRadius: 2,
-    opacity: 0.85,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  treeCenter: {
-    position: 'absolute',
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: '#fff',
+    width: BRANCH_BUTTON_SIZE,
+    height: BRANCH_BUTTON_SIZE,
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.3,
-    shadowRadius: 12,
-    elevation: 12,
-    borderWidth: 4,
-    borderColor: '#e8f5e8',
-  },
-  centerInner: {
-    alignItems: 'center',
-  },
-  centerText: {
-    fontSize: 32,
-    marginBottom: 4,
-  },
-  centerLabel: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-  },
-  branchContainer: {
-    position: 'absolute',
   },
   branchButton: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: BRANCH_BUTTON_SIZE,
+    height: BRANCH_BUTTON_SIZE,
+    borderRadius: BRANCH_RADIUS,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 12,
+  },
+  branchName: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+    lineHeight: 20,
+    paddingHorizontal: 8,
+  },
+  branchCounter: {
+    position: 'absolute',
+    top: -12,
+    right: -12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#F7F3E7',
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+  branchCounterText: {
+    color: '#53412E',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  fruitNode: {
+    position: 'absolute',
+    width: FRUIT_SIZE,
+    height: FRUIT_SIZE,
+    borderRadius: FRUIT_SIZE / 2,
+  },
+  fruitButton: {
+    width: '100%',
+    height: '100%',
+    borderRadius: FRUIT_SIZE / 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 10,
-    borderWidth: 3,
-    borderColor: '#fff',
-  },
-  branchText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    lineHeight: 16,
-  },
-  fruitCounter: {
-    position: 'absolute',
-    top: -5,
-    right: -5,
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    width: 24,
-    height: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: '#e8f5e8',
-  },
-  fruitCounterText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#2c3e50',
-  },
-  fruitWrapper: {
-    position: 'absolute',
-  },
-  fruitDot: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3,
+    shadowRadius: 4,
     elevation: 4,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   fruitEmoji: {
-    fontSize: 12,
+    fontSize: 14,
   },
-  rootsContainer: {
+  rootSection: {
     position: 'absolute',
-    left: 20,
-    right: 20,
-    bottom: 40,
-    alignItems: 'center',
+    left: 24,
+    right: 24,
+    paddingVertical: 28,
+    paddingHorizontal: 20,
+    borderRadius: 28,
+    borderWidth: 1,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 8,
   },
-  rootsTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 16,
+  rootTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 24,
   },
-  rootsGrid: {
+  rootList: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    gap: 16,
     justifyContent: 'center',
-    gap: 12,
   },
   rootCard: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    minWidth: 80,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 18,
+    width: CANVAS_WIDTH * 0.38,
+    maxWidth: 220,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.25,
+    shadowRadius: 6,
+    elevation: 6,
   },
   rootEmoji: {
-    fontSize: 16,
-    marginRight: 8,
+    fontSize: 20,
+    marginRight: 12,
   },
-  rootCardText: {
+  rootTextWrapper: {
+    flex: 1,
+  },
+  rootName: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  rootRelation: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  emptyRoots: {
     fontSize: 14,
-    fontWeight: '600',
-  },
-  rootLine: {
-    position: 'absolute',
-    height: 3,
-    backgroundColor: ROOT_COLOR,
-    borderRadius: 2,
-    opacity: 0.6,
+    marginTop: 8,
   },
 });
 
