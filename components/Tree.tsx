@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { View, Dimensions, TouchableOpacity, Text, StyleSheet, Animated, PanResponder } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useTreeStore } from '@/stores/treeStore';
@@ -8,7 +8,7 @@ import { useRouter } from 'expo-router';
 import { useThemeStore } from '@/stores/themeStore';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-const CANVAS_WIDTH = screenWidth;
+const SCREEN_WIDTH = screenWidth;
 const BASE_CANVAS_HEIGHT = screenHeight * 1.1;
 const BRANCHES_PER_LEVEL = 2;
 const LEVEL_SPACING = 150;
@@ -32,6 +32,8 @@ const BRANCH_COLORS: Record<string, string> = {
   vida: '#8E44AD',
 };
 
+const clampValue = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
+
 type TreeProps = {
   onBranchPress?: (branch: BranchType) => void;
   onFruitPress?: (fruit: FruitType) => void;
@@ -53,6 +55,15 @@ type FruitLayout = {
   y: number;
 };
 
+type TreeLayout = {
+  arranged: ArrangedBranch[];
+  trunkBottom: number;
+  trunkTop: number;
+  trunkHeight: number;
+  canvasHeight: number;
+  canvasWidth: number;
+};
+
 const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
   const { tree } = useTreeStore();
   const router = useRouter();
@@ -69,7 +80,96 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
   const lastTranslate = useRef({ x: 0, y: 0 });
   const initialDistance = useRef(1);
   const isPinchingRef = useRef(false);
-  
+  const panBoundsRef = useRef({ x: 0, y: 0 });
+
+  const sortedBranches = useMemo(() => {
+    const ordered = [...tree.branches].sort((a, b) => {
+      const aDate = new Date(a.createdAt).getTime();
+      const bDate = new Date(b.createdAt).getTime();
+      return aDate - bDate;
+    });
+    if (__DEV__) {
+      console.log('[Tree] Branch ordering', ordered.map((item) => item.id));
+    }
+    return ordered;
+  }, [tree.branches]);
+
+  const layout = useMemo<TreeLayout>(() => {
+    const totalBranches = sortedBranches.length;
+    const levels = Math.max(1, Math.ceil(totalBranches / BRANCHES_PER_LEVEL));
+    const trunkBottom = BASE_CANVAS_HEIGHT * 0.78;
+    const baseTrunkHeight = Math.max(LEVEL_SPACING * (levels + 0.6), BASE_CANVAS_HEIGHT * 0.45);
+    const anchorBaseOffset = 48;
+    const spreadBase = SCREEN_WIDTH * 0.26;
+    const spreadStep = 36;
+
+    const provisional = sortedBranches.map((branch, index) => {
+      const level = Math.floor(index / BRANCHES_PER_LEVEL);
+      const side = index % BRANCHES_PER_LEVEL === 0 ? -1 : 1;
+      const anchorY = trunkBottom - LEVEL_SPACING * (level + 0.6);
+      const centerY = anchorY - anchorBaseOffset;
+      const horizontalOffset = spreadBase + level * spreadStep;
+      return {
+        branch,
+        side,
+        anchorY,
+        centerY,
+        offsetX: side * horizontalOffset,
+      };
+    });
+
+    const maxOffset = provisional.length > 0 ? Math.max(...provisional.map((item) => Math.abs(item.offsetX))) : SCREEN_WIDTH * 0.12;
+    const canvasWidth = Math.max(SCREEN_WIDTH, maxOffset * 2 + BRANCH_BUTTON_SIZE + SCREEN_WIDTH * 0.4);
+    const centerX = canvasWidth / 2;
+
+    const arranged: ArrangedBranch[] = provisional.map((item) => ({
+      branch: item.branch,
+      side: item.side,
+      anchorX: centerX,
+      anchorY: item.anchorY,
+      centerX: centerX + item.offsetX,
+      centerY: item.centerY,
+    }));
+
+    const highestAnchor = arranged.length > 0 ? Math.min(...arranged.map((item) => item.anchorY)) : trunkBottom - baseTrunkHeight + 80;
+    const dynamicTrunkHeight = Math.max(baseTrunkHeight, trunkBottom - highestAnchor + 160);
+    const trunkTop = trunkBottom - dynamicTrunkHeight;
+    const canvasHeight = Math.max(BASE_CANVAS_HEIGHT, dynamicTrunkHeight + screenHeight * 0.4);
+
+    if (__DEV__) {
+      console.log('[Tree] Layout metrics', {
+        totalBranches,
+        levels,
+        trunkTop,
+        trunkBottom,
+        canvasHeight,
+        canvasWidth,
+      });
+    }
+
+    return {
+      arranged,
+      trunkBottom,
+      trunkTop,
+      trunkHeight: dynamicTrunkHeight,
+      canvasHeight,
+      canvasWidth,
+    };
+  }, [sortedBranches]);
+
+  const horizontalLimit = useMemo(() => Math.max(0, (layout.canvasWidth - SCREEN_WIDTH) / 2 + SCREEN_WIDTH * 0.2), [layout.canvasWidth]);
+  const verticalLimit = useMemo(() => Math.max(0, (layout.canvasHeight - screenHeight) / 2 + screenHeight * 0.15), [layout.canvasHeight]);
+
+  useEffect(() => {
+    panBoundsRef.current = { x: horizontalLimit, y: verticalLimit };
+    const clampedX = clampValue(currentTranslateRef.current.x, -horizontalLimit, horizontalLimit);
+    const clampedY = clampValue(currentTranslateRef.current.y, -verticalLimit, verticalLimit);
+    currentTranslateRef.current = { x: clampedX, y: clampedY };
+    lastTranslate.current = { x: clampedX, y: clampedY };
+    translateX.setValue(clampedX);
+    translateY.setValue(clampedY);
+  }, [horizontalLimit, verticalLimit, translateX, translateY]);
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
@@ -107,9 +207,12 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
           isPinchingRef.current = false;
           const newX = lastTranslate.current.x + gestureState.dx;
           const newY = lastTranslate.current.y + gestureState.dy;
-          currentTranslateRef.current = { x: newX, y: newY };
-          translateX.setValue(newX);
-          translateY.setValue(newY);
+          const bounds = panBoundsRef.current;
+          const clampedX = clampValue(newX, -bounds.x, bounds.x);
+          const clampedY = clampValue(newY, -bounds.y, bounds.y);
+          currentTranslateRef.current = { x: clampedX, y: clampedY };
+          translateX.setValue(clampedX);
+          translateY.setValue(clampedY);
         }
       },
       onPanResponderRelease: () => {
@@ -119,69 +222,6 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
       },
     })
   ).current;
-
-  const sortedBranches = useMemo(() => {
-    const ordered = [...tree.branches].sort((a, b) => {
-      const aDate = new Date(a.createdAt).getTime();
-      const bDate = new Date(b.createdAt).getTime();
-      return aDate - bDate;
-    });
-    if (__DEV__) {
-      console.log('[Tree] Branch ordering', ordered.map((item) => item.id));
-    }
-    return ordered;
-  }, [tree.branches]);
-
-  const layout = useMemo(() => {
-    const totalBranches = sortedBranches.length;
-    const levels = Math.max(1, Math.ceil(totalBranches / BRANCHES_PER_LEVEL));
-    const trunkBottom = BASE_CANVAS_HEIGHT * 0.78;
-    const baseTrunkHeight = Math.max(LEVEL_SPACING * (levels + 0.6), BASE_CANVAS_HEIGHT * 0.45);
-    const anchorBaseOffset = 48;
-    const centerX = CANVAS_WIDTH * 0.5;
-
-    const arranged: ArrangedBranch[] = sortedBranches.map((branch, index) => {
-      const level = Math.floor(index / BRANCHES_PER_LEVEL);
-      const side = index % BRANCHES_PER_LEVEL === 0 ? -1 : 1;
-      const anchorY = trunkBottom - LEVEL_SPACING * (level + 0.6);
-      const spreadBase = CANVAS_WIDTH * 0.26;
-      const spreadStep = 36;
-      const horizontalOffset = spreadBase + level * spreadStep;
-      const centerXOffset = centerX + side * horizontalOffset;
-      const centerY = anchorY - anchorBaseOffset;
-      return {
-        branch,
-        anchorX: centerX,
-        anchorY,
-        centerX: centerXOffset,
-        centerY,
-        side,
-      };
-    });
-
-    const highestAnchor = arranged.length > 0 ? Math.min(...arranged.map((item) => item.anchorY)) : trunkBottom - baseTrunkHeight + 80;
-    const dynamicTrunkHeight = Math.max(baseTrunkHeight, trunkBottom - highestAnchor + 160);
-    const trunkTop = trunkBottom - dynamicTrunkHeight;
-    const canvasHeight = Math.max(BASE_CANVAS_HEIGHT, dynamicTrunkHeight + screenHeight * 0.4);
-
-    if (__DEV__) {
-      console.log('[Tree] Layout metrics', {
-        totalBranches,
-        levels,
-        trunkTop,
-        trunkBottom,
-        canvasHeight,
-      });
-    }
-
-    return {
-      arranged,
-      trunkBottom,
-      trunkTop,
-      trunkHeight: dynamicTrunkHeight,
-      canvasHeight,
-    };
-  }, [sortedBranches]);
 
   const handleBranchPress = (branch: BranchType) => {
     if (onBranchPress) {
@@ -252,6 +292,7 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
           styles.backgroundCanopy,
           {
             height: BASE_CANVAS_HEIGHT * 0.35 * canopyScale,
+            width: layout.canvasWidth,
           },
         ]}
         pointerEvents="none"
@@ -261,9 +302,9 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
             styles.canopyGlow,
             {
               backgroundColor: canopyColor,
-              width: CANVAS_WIDTH * 0.9 * canopyScale,
+              width: layout.canvasWidth * 0.72 * canopyScale,
               height: BASE_CANVAS_HEIGHT * 0.32 * canopyScale,
-              borderRadius: CANVAS_WIDTH * 0.45 * canopyScale,
+              borderRadius: layout.canvasWidth * 0.36 * canopyScale,
             },
           ]}
         />
@@ -272,13 +313,9 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
         style={[
           styles.canvas,
           {
-            width: CANVAS_WIDTH,
+            width: layout.canvasWidth,
             height: layout.canvasHeight,
-            transform: [
-              { translateX },
-              { translateY },
-              { scale },
-            ],
+            transform: [{ translateX }, { translateY }, { scale }],
           },
         ]}
         {...panResponder.panHandlers}
@@ -287,14 +324,12 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
         <Text style={[styles.title, { color: isDarkMode ? '#E8EFEB' : '#1F2A24' }]} testID="tree-title">
           Mi Árbol de Vida
         </Text>
-        <Text style={[styles.subtitle, { color: isDarkMode ? '#9FB4AA' : '#5E6F65' }]}>
-          Cada rama suma a tu legado
-        </Text>
+        <Text style={[styles.subtitle, { color: isDarkMode ? '#9FB4AA' : '#5E6F65' }]}>Cada rama suma a tu legado</Text>
         <View
           style={[
             styles.trunk,
             {
-              left: CANVAS_WIDTH * 0.5 - TRUNK_WIDTH / 2,
+              left: layout.canvasWidth * 0.5 - TRUNK_WIDTH / 2,
               top: layout.trunkTop,
               height: layout.trunkHeight,
               backgroundColor: TRUNK_COLOR,
@@ -304,12 +339,7 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
           testID="tree-trunk"
           pointerEvents="none"
         />
-        <Svg
-          width={CANVAS_WIDTH}
-          height={layout.canvasHeight}
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
-        >
+        <Svg width={layout.canvasWidth} height={layout.canvasHeight} style={StyleSheet.absoluteFill} pointerEvents="none">
           {layout.arranged.map((item) => {
             const controlX = item.anchorX + item.side * Math.abs(item.centerX - item.anchorX) * 0.55;
             const controlY = item.centerY - 50;
@@ -455,16 +485,10 @@ const styles = StyleSheet.create({
   backgroundCanopy: {
     position: 'absolute',
     top: 0,
-    left: 0,
-    right: 0,
-    height: BASE_CANVAS_HEIGHT * 0.55,
     alignItems: 'center',
     justifyContent: 'flex-start',
   },
   canopyGlow: {
-    width: CANVAS_WIDTH * 0.9,
-    height: BASE_CANVAS_HEIGHT * 0.4,
-    borderRadius: CANVAS_WIDTH * 0.45,
     transform: [{ scaleX: 1.1 }],
     opacity: 0.9,
     marginTop: 40,
@@ -487,7 +511,7 @@ const styles = StyleSheet.create({
   },
   trunk: {
     position: 'absolute',
-    width: 28,
+    width: TRUNK_WIDTH,
     borderRadius: 18,
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.35,
@@ -591,7 +615,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderRadius: 18,
-    width: CANVAS_WIDTH * 0.38,
+    width: SCREEN_WIDTH * 0.38,
     maxWidth: 220,
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.25,
