@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { View, Dimensions, TouchableOpacity, Text, ScrollView, StyleSheet } from 'react-native';
+import React, { useMemo, useRef, useState } from 'react';
+import { View, Dimensions, TouchableOpacity, Text, StyleSheet, Animated, PanResponder } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useTreeStore } from '@/stores/treeStore';
 import colors from '@/constants/colors';
@@ -15,6 +15,9 @@ const LEVEL_SPACING = 150;
 const BRANCH_BUTTON_SIZE = 96;
 const BRANCH_RADIUS = BRANCH_BUTTON_SIZE / 2;
 const FRUIT_SIZE = 28;
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 2.5;
+const INITIAL_ZOOM = 1;
 const TRUNK_WIDTH = 28;
 const TRUNK_COLOR = '#8C5A2F';
 
@@ -55,6 +58,64 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
   const router = useRouter();
   const { theme } = useThemeStore();
   const isDarkMode = theme === 'dark';
+
+  const scale = useRef(new Animated.Value(INITIAL_ZOOM)).current;
+  const translateX = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
+  
+  const [currentScale, setCurrentScale] = useState(INITIAL_ZOOM);
+  const [currentTranslate, setCurrentTranslate] = useState({ x: 0, y: 0 });
+  const lastScale = useRef(INITIAL_ZOOM);
+  const lastTranslate = useRef({ x: 0, y: 0 });
+  const initialDistance = useRef(0);
+  const initialMidpoint = useRef({ x: 0, y: 0 });
+  
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (evt) => {
+        if (evt.nativeEvent.touches.length === 2) {
+          const touch1 = evt.nativeEvent.touches[0];
+          const touch2 = evt.nativeEvent.touches[1];
+          const dx = touch1.pageX - touch2.pageX;
+          const dy = touch1.pageY - touch2.pageY;
+          initialDistance.current = Math.sqrt(dx * dx + dy * dy);
+          initialMidpoint.current = {
+            x: (touch1.pageX + touch2.pageX) / 2,
+            y: (touch1.pageY + touch2.pageY) / 2,
+          };
+        }
+        lastScale.current = currentScale;
+        lastTranslate.current = currentTranslate;
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        if (evt.nativeEvent.touches.length === 2) {
+          const touch1 = evt.nativeEvent.touches[0];
+          const touch2 = evt.nativeEvent.touches[1];
+          const dx = touch1.pageX - touch2.pageX;
+          const dy = touch1.pageY - touch2.pageY;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          const newScale = Math.max(
+            MIN_ZOOM,
+            Math.min(MAX_ZOOM, lastScale.current * (distance / initialDistance.current))
+          );
+          setCurrentScale(newScale);
+          scale.setValue(newScale);
+        } else if (evt.nativeEvent.touches.length === 1) {
+          const newX = lastTranslate.current.x + gestureState.dx;
+          const newY = lastTranslate.current.y + gestureState.dy;
+          setCurrentTranslate({ x: newX, y: newY });
+          translateX.setValue(newX);
+          translateY.setValue(newY);
+        }
+      },
+      onPanResponderRelease: () => {
+        lastScale.current = currentScale;
+        lastTranslate.current = currentTranslate;
+      },
+    })
+  ).current;
 
   const sortedBranches = useMemo(() => {
     const ordered = [...tree.branches].sort((a, b) => {
@@ -148,14 +209,14 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
         return;
       }
       const perRow = 3;
-      const rowGap = 38;
-      const columnGap = 36;
+      const rowGap = 32;
+      const columnGap = 32;
       const cluster: FruitLayout[] = fruitList.map((fruit, index) => {
         const row = Math.floor(index / perRow);
         const column = index % perRow;
         const columnOffset = column - (perRow - 1) / 2;
         const x = item.centerX + columnOffset * columnGap;
-        const y = item.centerY - BRANCH_RADIUS - 40 - row * rowGap;
+        const y = item.centerY - BRANCH_RADIUS - 20 - row * rowGap;
         return {
           fruit,
           x,
@@ -177,16 +238,26 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
   const trunkShadowColor = isDarkMode ? '#000' : '#2B170A';
 
   return (
-    <ScrollView
-      style={[styles.scroll, { backgroundColor }]}
-      contentContainerStyle={{ minHeight: layout.canvasHeight, alignItems: 'center', paddingBottom: 120 }}
-      showsVerticalScrollIndicator={false}
-      testID="tree-scroll"
-    >
+    <View style={[styles.container, { backgroundColor }]} testID="tree-container">
       <View style={styles.backgroundCanopy} pointerEvents="none">
         <View style={[styles.canopyGlow, { backgroundColor: canopyColor }]} />
       </View>
-      <View style={[styles.canvas, { width: CANVAS_WIDTH, height: layout.canvasHeight }]} testID="tree-canvas">
+      <Animated.View
+        style={[
+          styles.canvas,
+          {
+            width: CANVAS_WIDTH,
+            height: layout.canvasHeight,
+            transform: [
+              { translateX },
+              { translateY },
+              { scale },
+            ],
+          },
+        ]}
+        {...panResponder.panHandlers}
+        testID="tree-canvas"
+      >
         <Text style={[styles.title, { color: isDarkMode ? '#E8EFEB' : '#1F2A24' }]} testID="tree-title">
           Mi Árbol de Vida
         </Text>
@@ -345,14 +416,15 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
             )}
           </View>
         </View>
-      </View>
-    </ScrollView>
+      </Animated.View>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
-  scroll: {
+  container: {
     flex: 1,
+    overflow: 'hidden',
   },
   backgroundCanopy: {
     position: 'absolute',
