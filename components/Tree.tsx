@@ -94,6 +94,15 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
     return ordered;
   }, [tree.branches]);
 
+  const rootsToDisplay = useMemo(() => tree.roots.slice(0, 6), [tree.roots]);
+
+  const rootSectionHeight = useMemo(() => {
+    const rows = Math.max(1, Math.ceil(rootsToDisplay.length / 2));
+    const baseHeight = 220;
+    const rowHeight = 96;
+    return baseHeight + rows * rowHeight;
+  }, [rootsToDisplay.length]);
+
   const layout = useMemo<TreeLayout>(() => {
     const totalBranches = sortedBranches.length;
     const levels = Math.max(1, Math.ceil(totalBranches / BRANCHES_PER_LEVEL));
@@ -134,7 +143,12 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
     const highestAnchor = arranged.length > 0 ? Math.min(...arranged.map((item) => item.anchorY)) : trunkBottom - baseTrunkHeight + 80;
     const dynamicTrunkHeight = Math.max(baseTrunkHeight, trunkBottom - highestAnchor + 160);
     const trunkTop = trunkBottom - dynamicTrunkHeight;
-    const canvasHeight = Math.max(BASE_CANVAS_HEIGHT, dynamicTrunkHeight + screenHeight * 0.4);
+    const rootPadding = 240;
+    const canvasHeight = Math.max(
+      BASE_CANVAS_HEIGHT + rootSectionHeight,
+      dynamicTrunkHeight + screenHeight * 0.4 + rootSectionHeight,
+      trunkBottom + rootSectionHeight + rootPadding,
+    );
 
     if (__DEV__) {
       console.log('[Tree] Layout metrics', {
@@ -155,10 +169,10 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
       canvasHeight,
       canvasWidth,
     };
-  }, [sortedBranches]);
+  }, [rootSectionHeight, sortedBranches]);
 
   const horizontalLimit = useMemo(() => Math.max(0, (layout.canvasWidth - SCREEN_WIDTH) / 2 + SCREEN_WIDTH * 0.2), [layout.canvasWidth]);
-  const verticalLimit = useMemo(() => Math.max(0, (layout.canvasHeight - screenHeight) / 2 + screenHeight * 0.15), [layout.canvasHeight]);
+  const verticalLimit = useMemo(() => Math.max(0, (layout.canvasHeight - screenHeight) / 2 + screenHeight * 0.25), [layout.canvasHeight]);
 
   useEffect(() => {
     panBoundsRef.current = { x: horizontalLimit, y: verticalLimit };
@@ -278,12 +292,15 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
     return mapping;
   }, [layout.arranged, tree.fruits]);
 
-  const rootsToDisplay = useMemo(() => tree.roots.slice(0, 6), [tree.roots]);
-
   const backgroundColor = isDarkMode ? '#0C1117' : '#F5F1E6';
   const canopyColor = isDarkMode ? 'rgba(46, 125, 50, 0.25)' : 'rgba(129, 199, 132, 0.35)';
   const trunkShadowColor = isDarkMode ? '#000' : '#2B170A';
   const canopyScale = 1 + Math.min(sortedBranches.length / 10, 0.8);
+  const canopyWidth = layout.canvasWidth;
+  const canopyHeight = Math.max(BASE_CANVAS_HEIGHT * 0.35, layout.trunkHeight * 0.45) * canopyScale;
+  const canopyGlowWidth = canopyWidth * 0.72 * canopyScale;
+  const canopyGlowHeight = Math.max(BASE_CANVAS_HEIGHT * 0.32, layout.trunkHeight * 0.4) * canopyScale;
+  const canopyGlowRadius = canopyGlowWidth / 2;
 
   return (
     <View style={[styles.container, { backgroundColor }]} testID="tree-container">
@@ -291,8 +308,8 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
         style={[
           styles.backgroundCanopy,
           {
-            height: BASE_CANVAS_HEIGHT * 0.35 * canopyScale,
-            width: layout.canvasWidth,
+            height: canopyHeight,
+            width: canopyWidth,
           },
         ]}
         pointerEvents="none"
@@ -302,9 +319,9 @@ const Tree = ({ onBranchPress, onFruitPress, onRootPress }: TreeProps) => {
             styles.canopyGlow,
             {
               backgroundColor: canopyColor,
-              width: layout.canvasWidth * 0.72 * canopyScale,
-              height: BASE_CANVAS_HEIGHT * 0.32 * canopyScale,
-              borderRadius: layout.canvasWidth * 0.36 * canopyScale,
+              width: canopyGlowWidth,
+              height: canopyGlowHeight,
+              borderRadius: canopyGlowRadius,
             },
           ]}
         />
