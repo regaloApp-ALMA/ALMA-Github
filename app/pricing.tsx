@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import colors from '@/constants/colors';
@@ -9,435 +9,88 @@ export default function PricingScreen() {
   const { theme } = useThemeStore();
   const router = useRouter();
   const isDarkMode = theme === 'dark';
-  const [selectedPlan, setSelectedPlan] = useState<string | null>(null);
 
-  const plans = [
-    {
-      id: 'gratuito',
-      name: 'PLAN GRATUITO',
-      subtitle: 'EMPIEZA A ORGANIZAR TU VIDA Y CREA LA BASE DE TU ÁRBOL',
-      price: 'Gratis',
-      icon: Database,
-      color: colors.gray,
-      features: [
-        'ANUNCIOS',
-        'ALMACENAMIENTO HASTA 10 GB',
-        'GENERACIÓN IA LIMITADA'
-      ],
-      popular: false,
-    },
-    {
-      id: 'pro',
-      name: 'PLAN PRO',
-      subtitle: 'HAZ CRECER TU ÁRBOL, AÑADE HISTORIA, EMOCIONES Y LEGADO',
-      price: '€6,99 - €14,99 / MES',
-      icon: Zap,
-      color: colors.primary,
-      features: [
-        'TODO LO INCLUIDO DEL PLAN GRATUITO',
-        'SIN ANUNCIOS',
-        'ALMACENAMIENTO AMPLIADO HASTA 100 GB',
-        'GENERACIÓN IA MODERADA'
-      ],
-      description: 'IDEAL PARA CONSTRUIR Y COMPARTIR EN FAMILIA',
-      popular: true,
-    },
-    {
-      id: 'premium',
-      name: 'PLAN PREMIUM',
-      subtitle: 'PRESERVA LA HISTORIA COMPLETA DE TU FAMILIA CON TODO EL PODER DE ALMA',
-      price: '€14,99 - €24,99 / MES',
-      icon: Crown,
-      color: colors.warning,
-      features: [
-        'TODO LO INCLUIDO DEL PLAN PRO',
-        'ALMACENAMIENTO AMPLIADO HASTA 1 TB',
-        'GENERACIÓN IA AMPLIADA',
-        'AVATARES PERSONALIZADOS'
-      ],
-      description: 'PERFECTO PARA CONSERVAR TODOS TUS RECUERDOS DE MANERA SENCILLA Y AUTOMÁTICA',
-      popular: false,
-    }
-  ];
-
-  const handleSelectPlan = (planId: string) => {
-    setSelectedPlan(planId);
-    
-    if (planId === 'gratuito') {
-      Alert.alert(
-        'Plan Gratuito',
-        'Ya tienes acceso al plan gratuito. ¡Empieza a crear tu árbol de vida!',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
+  const handleSelectPlan = (planName: string) => {
     Alert.alert(
-      'Suscripción',
-      `¿Quieres suscribirte al ${plans.find(p => p.id === planId)?.name}?`,
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        { 
-          text: 'Suscribirse', 
-          onPress: () => {
-            Alert.alert('¡Bienvenido!', 'Tu suscripción ha sido activada correctamente.');
-            router.back();
-          }
-        }
-      ]
+      "Suscripción",
+      `Has seleccionado ${planName}. En una app real, aquí se abriría la pasarela de pago de Apple/Google.`,
+      [{ text: "Entendido", onPress: () => router.back() }]
     );
   };
 
+  const PlanCard = ({ name, price, features, icon: Icon, color, popular }: any) => (
+    <TouchableOpacity
+      style={[
+        styles.card,
+        isDarkMode && styles.cardDark,
+        popular && { borderColor: color, borderWidth: 2 }
+      ]}
+      onPress={() => handleSelectPlan(name)}
+    >
+      {popular && <View style={[styles.popTag, { backgroundColor: color }]}><Text style={styles.popText}>POPULAR</Text></View>}
+      <View style={[styles.iconBox, { backgroundColor: color + '20' }]}>
+        <Icon size={32} color={color} />
+      </View>
+      <Text style={[styles.planName, isDarkMode && styles.textWhite]}>{name}</Text>
+      <Text style={[styles.planPrice, { color: color }]}>{price}</Text>
+      <View style={styles.featList}>
+        {features.map((f: string, i: number) => (
+          <View key={i} style={styles.featRow}>
+            <Check size={16} color={color} />
+            <Text style={[styles.featText, isDarkMode && styles.textLight]}> {f}</Text>
+          </View>
+        ))}
+      </View>
+    </TouchableOpacity>
+  );
+
   return (
     <>
-      <Stack.Screen 
-        options={{
-          title: 'Planes y Precios',
-          headerStyle: {
-            backgroundColor: isDarkMode ? '#1E1E1E' : colors.primary,
-          },
-          headerTintColor: colors.white,
-        }}
-      />
-      
+      <Stack.Screen options={{ title: 'Suscripciones', headerStyle: { backgroundColor: isDarkMode ? '#1E1E1E' : colors.primary }, headerTintColor: '#FFF' }} />
       <ScrollView style={[styles.container, isDarkMode && styles.containerDark]}>
-        <View style={[styles.header, isDarkMode && styles.headerDark]}>
-          <Star size={32} color={colors.warning} />
-          <Text style={[styles.headerTitle, isDarkMode && styles.headerTitleDark]}>
-            Elige tu plan perfecto
-          </Text>
-          <Text style={[styles.headerSubtitle, isDarkMode && styles.headerSubtitleDark]}>
-            Desbloquea todo el potencial de tu árbol de vida
-          </Text>
+        <View style={styles.header}>
+          <Star size={40} color={colors.warning} fill={colors.warning} />
+          <Text style={[styles.title, isDarkMode && styles.textWhite]}>Invierte en tus recuerdos</Text>
+          <Text style={[styles.subtitle, isDarkMode && styles.textLight]}>Planes flexibles para cada etapa de tu vida.</Text>
         </View>
 
-        {plans.map((plan) => {
-          const IconComponent = plan.icon;
-          return (
-            <View 
-              key={plan.id} 
-              style={[
-                styles.planCard, 
-                isDarkMode && styles.planCardDark,
-                plan.popular && styles.planCardPopular,
-                plan.popular && { borderColor: plan.color }
-              ]}
-            >
-              {plan.popular && (
-                <View style={[styles.popularBadge, { backgroundColor: plan.color }]}>
-                  <Text style={styles.popularBadgeText}>MÁS POPULAR</Text>
-                </View>
-              )}
-              
-              <View style={styles.planHeader}>
-                <View style={[styles.planIcon, { backgroundColor: plan.color + '20' }]}>
-                  <IconComponent size={32} color={plan.color} />
-                </View>
-                <View style={styles.planTitleContainer}>
-                  <Text style={[styles.planName, isDarkMode && styles.planNameDark]}>
-                    {plan.name}
-                  </Text>
-                  <Text style={[styles.planPrice, { color: plan.color }]}>
-                    {plan.price}
-                  </Text>
-                </View>
-              </View>
+        <PlanCard
+          name="Plan Pro"
+          price="6,99€ / mes"
+          color={colors.primary}
+          icon={Zap}
+          popular={true}
+          features={['100 GB de espacio', 'Sin anuncios', 'IA Ilimitada']}
+        />
 
-              <Text style={[styles.planSubtitle, isDarkMode && styles.planSubtitleDark]}>
-                {plan.subtitle}
-              </Text>
-
-              <View style={styles.planFeatures}>
-                {plan.features.map((feature, index) => (
-                  <View key={index} style={styles.planFeature}>
-                    <Check size={16} color={plan.color} />
-                    <Text style={[styles.planFeatureText, isDarkMode && styles.planFeatureTextDark]}>
-                      {feature}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-
-              {plan.description && (
-                <Text style={[styles.planDescription, isDarkMode && styles.planDescriptionDark]}>
-                  {plan.description}
-                </Text>
-              )}
-
-              <TouchableOpacity 
-                style={[
-                  styles.selectButton, 
-                  { backgroundColor: plan.color },
-                  selectedPlan === plan.id && styles.selectedButton
-                ]}
-                onPress={() => handleSelectPlan(plan.id)}
-              >
-                <Text style={styles.selectButtonText}>
-                  {plan.id === 'gratuito' ? 'PLAN ACTUAL' : 'SELECCIONAR PLAN'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          );
-        })}
-
-        <View style={[styles.infoSection, isDarkMode && styles.infoSectionDark]}>
-          <Text style={[styles.infoTitle, isDarkMode && styles.infoTitleDark]}>
-            ¿Por qué elegir un plan premium?
-          </Text>
-          
-          <View style={styles.infoItems}>
-            <View style={styles.infoItem}>
-              <Text style={styles.infoEmoji}>🚀</Text>
-              <Text style={[styles.infoText, isDarkMode && styles.infoTextDark]}>
-                Más espacio para guardar todos tus recuerdos sin límites
-              </Text>
-            </View>
-            
-            <View style={styles.infoItem}>
-              <Text style={styles.infoEmoji}>🤖</Text>
-              <Text style={[styles.infoText, isDarkMode && styles.infoTextDark]}>
-                IA avanzada que te ayuda a crear recuerdos más ricos y detallados
-              </Text>
-            </View>
-            
-            <View style={styles.infoItem}>
-              <Text style={styles.infoEmoji}>👨‍👩‍👧‍👦</Text>
-              <Text style={[styles.infoText, isDarkMode && styles.infoTextDark]}>
-                Funciones familiares para compartir y colaborar en tiempo real
-              </Text>
-            </View>
-            
-            <View style={styles.infoItem}>
-              <Text style={styles.infoEmoji}>🎨</Text>
-              <Text style={[styles.infoText, isDarkMode && styles.infoTextDark]}>
-                Personalización completa con avatares y temas únicos
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={[styles.guaranteeBox, isDarkMode && styles.guaranteeBoxDark]}>
-          <Text style={[styles.guaranteeText, isDarkMode && styles.guaranteeTextDark]}>
-            💝 Garantía de satisfacción de 30 días. Si no estás completamente satisfecho, 
-            te devolvemos tu dinero sin preguntas.
-          </Text>
-        </View>
+        <PlanCard
+          name="Plan Premium"
+          price="14,99€ / mes"
+          color={colors.warning}
+          icon={Crown}
+          features={['1 TB de espacio', 'Soporte Prioritario', 'Legado Digital Avanzado']}
+        />
       </ScrollView>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    padding: 16,
-  },
-  containerDark: {
-    backgroundColor: '#121212',
-  },
-  header: {
-    alignItems: 'center',
-    padding: 24,
-    backgroundColor: colors.white,
-    borderRadius: 16,
-    marginBottom: 24,
-  },
-  headerDark: {
-    backgroundColor: '#1E1E1E',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginTop: 12,
-    marginBottom: 8,
-  },
-  headerTitleDark: {
-    color: colors.white,
-  },
-  headerSubtitle: {
-    fontSize: 16,
-    color: colors.textLight,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  headerSubtitleDark: {
-    color: '#AAA',
-  },
-  planCard: {
-    backgroundColor: colors.white,
-    borderRadius: 20,
-    padding: 24,
-    marginBottom: 20,
-    borderWidth: 2,
-    borderColor: 'transparent',
-    position: 'relative',
-  },
-  planCardDark: {
-    backgroundColor: '#1E1E1E',
-  },
-  planCardPopular: {
-    borderWidth: 3,
-    transform: [{ scale: 1.02 }],
-  },
-  popularBadge: {
-    position: 'absolute',
-    top: -10,
-    left: 20,
-    right: 20,
-    paddingVertical: 8,
-    borderRadius: 20,
-    alignItems: 'center',
-  },
-  popularBadgeText: {
-    color: colors.white,
-    fontSize: 12,
-    fontWeight: 'bold',
-    letterSpacing: 1,
-  },
-  planHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-    marginTop: 8,
-  },
-  planIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  planTitleContainer: {
-    flex: 1,
-  },
-  planName: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.text,
-    letterSpacing: 0.5,
-  },
-  planNameDark: {
-    color: colors.white,
-  },
-  planPrice: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginTop: 4,
-  },
-  planSubtitle: {
-    fontSize: 14,
-    color: colors.textLight,
-    marginBottom: 20,
-    lineHeight: 20,
-    fontWeight: '500',
-  },
-  planSubtitleDark: {
-    color: '#AAA',
-  },
-  planFeatures: {
-    marginBottom: 20,
-  },
-  planFeature: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  planFeatureText: {
-    fontSize: 14,
-    color: colors.text,
-    marginLeft: 12,
-    fontWeight: '500',
-    letterSpacing: 0.3,
-  },
-  planFeatureTextDark: {
-    color: colors.white,
-  },
-  planDescription: {
-    fontSize: 13,
-    color: colors.textLight,
-    fontStyle: 'italic',
-    textAlign: 'center',
-    marginBottom: 20,
-    fontWeight: '500',
-    letterSpacing: 0.5,
-  },
-  planDescriptionDark: {
-    color: '#AAA',
-  },
-  selectButton: {
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  selectedButton: {
-    opacity: 0.8,
-  },
-  selectButtonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: 'bold',
-    letterSpacing: 1,
-  },
-  infoSection: {
-    backgroundColor: colors.white,
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-  },
-  infoSectionDark: {
-    backgroundColor: '#1E1E1E',
-  },
-  infoTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  infoTitleDark: {
-    color: colors.white,
-  },
-  infoItems: {
-    gap: 16,
-  },
-  infoItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  infoEmoji: {
-    fontSize: 20,
-    marginRight: 12,
-    marginTop: 2,
-  },
-  infoText: {
-    fontSize: 14,
-    color: colors.textLight,
-    lineHeight: 20,
-    flex: 1,
-  },
-  infoTextDark: {
-    color: '#AAA',
-  },
-  guaranteeBox: {
-    backgroundColor: colors.primaryLight,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 32,
-  },
-  guaranteeBoxDark: {
-    backgroundColor: colors.primary + '20',
-  },
-  guaranteeText: {
-    fontSize: 14,
-    color: colors.text,
-    lineHeight: 20,
-    textAlign: 'center',
-  },
-  guaranteeTextDark: {
-    color: colors.white,
-  },
+  container: { flex: 1, backgroundColor: '#F5F7FA', padding: 20 },
+  containerDark: { backgroundColor: '#121212' },
+  header: { alignItems: 'center', marginBottom: 30 },
+  title: { fontSize: 24, fontWeight: 'bold', color: '#333', marginTop: 10 },
+  subtitle: { fontSize: 16, color: '#666', textAlign: 'center', marginTop: 5 },
+  card: { backgroundColor: '#FFF', borderRadius: 20, padding: 24, marginBottom: 20, elevation: 3, shadowColor: '#000', shadowOpacity: 0.1 },
+  cardDark: { backgroundColor: '#1E1E1E' },
+  iconBox: { alignSelf: 'center', padding: 15, borderRadius: 50, marginBottom: 15 },
+  planName: { fontSize: 22, fontWeight: 'bold', textAlign: 'center', color: '#333' },
+  planPrice: { fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginBottom: 20 },
+  featList: { borderTopWidth: 1, borderTopColor: '#EEE', paddingTop: 15 },
+  featRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  featText: { fontSize: 14, color: '#555', marginLeft: 8 },
+  popTag: { position: 'absolute', top: -12, alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10 },
+  popText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
+  textWhite: { color: '#FFF' },
+  textLight: { color: '#CCC' },
 });

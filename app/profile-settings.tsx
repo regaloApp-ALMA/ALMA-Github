@@ -1,69 +1,148 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Image } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useUserStore } from '@/stores/userStore';
 import colors from '@/constants/colors';
 import { useThemeStore } from '@/stores/themeStore';
-import { User, Mail, Phone, MapPin, Calendar, Save } from 'lucide-react-native';
+import { User, Mail, Phone, MapPin, Calendar, Save, Camera } from 'lucide-react-native';
+import { supabase } from '@/lib/supabase';
+import * as ImagePicker from 'expo-image-picker';
+import { uploadMedia } from '@/lib/storageHelper';
 
 export default function ProfileSettingsScreen() {
-  const { user, updateUser } = useUserStore();
+  const { user, initialize } = useUserStore();
   const { theme } = useThemeStore();
   const router = useRouter();
   const isDarkMode = theme === 'dark';
 
-  const [name, setName] = useState(user?.name || '');
-  const [email, setEmail] = useState(user?.email || '');
+  // Estados locales para el formulario
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [location, setLocation] = useState('');
   const [birthDate, setBirthDate] = useState('');
   const [bio, setBio] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
 
-  const handleSave = () => {
-    if (!name.trim() || !email.trim()) {
-      Alert.alert('Error', 'El nombre y email son obligatorios');
+  const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+
+  // CARGAR DATOS AL ENTRAR
+  useEffect(() => {
+    if (user) {
+      setName(user.name || '');
+      setEmail(user.email || '');
+      // Casteamos a 'any' porque UserType base a veces no tiene estos campos extendidos aún
+      const u = user as any;
+      setPhone(u.phone || '');
+      setLocation(u.location || '');
+      setBirthDate(u.birth_date || '');
+      setBio(u.bio || '');
+      setAvatarUrl(u.avatar_url || '');
+    }
+  }, [user]);
+
+  // FUNCIÓN PARA CAMBIAR FOTO
+  const handlePickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        // CAMBIO AQUÍ: Usar MediaType.Images en lugar de MediaTypeOptions
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.5,
+      });
+
+      if (!result.canceled) {
+        setIsUploading(true);
+        const uri = result.assets[0].uri;
+
+        if (user?.id) {
+          const publicUrl = await uploadMedia(uri, user.id, 'avatars');
+          if (publicUrl) {
+            setAvatarUrl(publicUrl);
+          } else {
+            Alert.alert("Error", "No se pudo subir la imagen");
+          }
+        }
+      }
+    } catch (error) {
+      Alert.alert("Error", "Error al seleccionar imagen");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!name.trim()) {
+      Alert.alert('Error', 'El nombre es obligatorio');
       return;
     }
 
-    updateUser({
-      name: name.trim(),
-      email: email.trim(),
-    });
+    setIsSaving(true);
+    try {
+      // 1. Guardar en Supabase
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          name: name.trim(),
+          phone: phone.trim(),
+          location: location.trim(),
+          birth_date: birthDate.trim() || null,
+          bio: bio.trim(),
+          avatar_url: avatarUrl, // Guardamos la URL nueva
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', user?.id);
 
-    Alert.alert(
-      'Perfil Actualizado',
-      'Tus datos han sido guardados correctamente',
-      [
-        {
-          text: 'OK',
-          onPress: () => router.back(),
-        }
-      ]
-    );
+      if (error) throw error;
+
+      // 2. IMPORTANTE: Recargar el estado global
+      await initialize();
+
+      Alert.alert('Perfil Actualizado', 'Tus datos se han guardado correctamente.', [
+        { text: 'OK', onPress: () => router.back() }
+      ]);
+
+    } catch (error: any) {
+      Alert.alert('Error al guardar', error.message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <>
-      <Stack.Screen 
+      <Stack.Screen
         options={{
-          title: 'Perfil Personal',
-          headerStyle: {
-            backgroundColor: isDarkMode ? '#1E1E1E' : colors.primary,
-          },
+          title: 'Editar Perfil',
+          headerStyle: { backgroundColor: isDarkMode ? '#1E1E1E' : colors.primary },
           headerTintColor: colors.white,
         }}
       />
-      
+
       <ScrollView style={[styles.container, isDarkMode && styles.containerDark]}>
+
+        {/* SECCIÓN DE AVATAR */}
         <View style={[styles.header, isDarkMode && styles.headerDark]}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarText}>{name.charAt(0) || 'U'}</Text>
-          </View>
-          <Text style={[styles.headerTitle, isDarkMode && styles.headerTitleDark]}>
-            Personaliza tu perfil
-          </Text>
+          <TouchableOpacity onPress={handlePickImage} style={styles.avatarContainer}>
+            {isUploading ? (
+              <ActivityIndicator color="#FFF" />
+            ) : avatarUrl ? (
+              <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+            ) : (
+              <View style={[styles.avatarPlaceholder, { backgroundColor: colors.primary }]}>
+                <Text style={styles.avatarText}>{(name.charAt(0) || 'U').toUpperCase()}</Text>
+              </View>
+            )}
+            <View style={styles.cameraIconBadge}>
+              <Camera size={16} color="#FFF" />
+            </View>
+          </TouchableOpacity>
+          <Text style={[styles.changePhotoText, isDarkMode && styles.textLight]}>Cambiar foto</Text>
         </View>
 
+        {/* FORMULARIO */}
         <View style={styles.formGroup}>
           <View style={styles.labelRow}>
             <User size={20} color={colors.primary} />
@@ -73,7 +152,7 @@ export default function ProfileSettingsScreen() {
             style={[styles.input, isDarkMode && styles.inputDark]}
             value={name}
             onChangeText={setName}
-            placeholder="Tu nombre completo"
+            placeholder="Tu nombre"
             placeholderTextColor={isDarkMode ? '#666' : colors.gray}
           />
         </View>
@@ -84,13 +163,9 @@ export default function ProfileSettingsScreen() {
             <Text style={[styles.label, isDarkMode && styles.labelDark]}>Email</Text>
           </View>
           <TextInput
-            style={[styles.input, isDarkMode && styles.inputDark]}
+            style={[styles.input, isDarkMode && styles.inputDark, { opacity: 0.6 }]}
             value={email}
-            onChangeText={setEmail}
-            placeholder="tu@email.com"
-            placeholderTextColor={isDarkMode ? '#666' : colors.gray}
-            keyboardType="email-address"
-            autoCapitalize="none"
+            editable={false}
           />
         </View>
 
@@ -103,9 +178,9 @@ export default function ProfileSettingsScreen() {
             style={[styles.input, isDarkMode && styles.inputDark]}
             value={phone}
             onChangeText={setPhone}
-            placeholder="+34 123 456 789"
-            placeholderTextColor={isDarkMode ? '#666' : colors.gray}
             keyboardType="phone-pad"
+            placeholder="+34..."
+            placeholderTextColor={isDarkMode ? '#666' : colors.gray}
           />
         </View>
 
@@ -118,7 +193,7 @@ export default function ProfileSettingsScreen() {
             style={[styles.input, isDarkMode && styles.inputDark]}
             value={location}
             onChangeText={setLocation}
-            placeholder="Madrid, España"
+            placeholder="Ciudad, País"
             placeholderTextColor={isDarkMode ? '#666' : colors.gray}
           />
         </View>
@@ -132,7 +207,7 @@ export default function ProfileSettingsScreen() {
             style={[styles.input, isDarkMode && styles.inputDark]}
             value={birthDate}
             onChangeText={setBirthDate}
-            placeholder="DD/MM/YYYY"
+            placeholder="YYYY-MM-DD"
             placeholderTextColor={isDarkMode ? '#666' : colors.gray}
           />
         </View>
@@ -143,20 +218,26 @@ export default function ProfileSettingsScreen() {
             style={[styles.textArea, isDarkMode && styles.inputDark]}
             value={bio}
             onChangeText={setBio}
-            placeholder="Cuéntanos algo sobre ti..."
-            placeholderTextColor={isDarkMode ? '#666' : colors.gray}
             multiline
             numberOfLines={4}
-            textAlignVertical="top"
+            placeholder="Sobre mí..."
+            placeholderTextColor={isDarkMode ? '#666' : colors.gray}
           />
         </View>
 
         <TouchableOpacity
-          style={[styles.saveButton, isDarkMode && styles.saveButtonDark]}
+          style={[styles.saveButton, isSaving && styles.saveButtonDisabled]}
           onPress={handleSave}
+          disabled={isSaving}
         >
-          <Save size={20} color={colors.white} />
-          <Text style={styles.saveButtonText}>Guardar Cambios</Text>
+          {isSaving ? (
+            <ActivityIndicator color="#FFF" />
+          ) : (
+            <>
+              <Save size={20} color={colors.white} style={{ marginRight: 8 }} />
+              <Text style={styles.saveButtonText}>Guardar Cambios</Text>
+            </>
+          )}
         </TouchableOpacity>
       </ScrollView>
     </>
@@ -164,102 +245,25 @@ export default function ProfileSettingsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    padding: 16,
-  },
-  containerDark: {
-    backgroundColor: '#121212',
-  },
-  header: {
-    alignItems: 'center',
-    padding: 24,
-    backgroundColor: colors.white,
-    borderRadius: 16,
-    marginBottom: 24,
-  },
-  headerDark: {
-    backgroundColor: '#1E1E1E',
-  },
-  avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  avatarText: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: colors.white,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text,
-  },
-  headerTitleDark: {
-    color: colors.white,
-  },
-  formGroup: {
-    marginBottom: 20,
-  },
-  labelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginLeft: 8,
-  },
-  labelDark: {
-    color: colors.white,
-  },
-  input: {
-    backgroundColor: colors.white,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  inputDark: {
-    backgroundColor: '#1E1E1E',
-    borderColor: '#333',
-    color: colors.white,
-  },
-  textArea: {
-    backgroundColor: colors.white,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    minHeight: 100,
-  },
-  saveButton: {
-    backgroundColor: colors.primary,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    borderRadius: 12,
-    marginTop: 16,
-    marginBottom: 32,
-  },
-  saveButtonDark: {
-    backgroundColor: colors.primary,
-  },
-  saveButtonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginLeft: 8,
-  },
+  container: { flex: 1, backgroundColor: colors.background, padding: 16 },
+  containerDark: { backgroundColor: '#121212' },
+  header: { alignItems: 'center', marginBottom: 30, marginTop: 10 },
+  headerDark: { backgroundColor: '#1E1E1E', padding: 20, borderRadius: 12 },
+  avatarContainer: { position: 'relative', marginBottom: 8 },
+  avatarImage: { width: 100, height: 100, borderRadius: 50 },
+  avatarPlaceholder: { width: 100, height: 100, borderRadius: 50, alignItems: 'center', justifyContent: 'center' },
+  avatarText: { fontSize: 40, color: '#FFF', fontWeight: 'bold' },
+  cameraIconBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: '#333', padding: 8, borderRadius: 20, borderWidth: 2, borderColor: '#FFF' },
+  changePhotoText: { color: colors.primary, fontSize: 14, fontWeight: '600' },
+  textLight: { color: '#CCC' },
+  formGroup: { marginBottom: 20 },
+  labelRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  label: { fontSize: 16, fontWeight: 'bold', color: colors.text, marginLeft: 8 },
+  labelDark: { color: '#FFF' },
+  input: { backgroundColor: colors.white, borderRadius: 8, padding: 12, fontSize: 16, borderWidth: 1, borderColor: colors.border },
+  inputDark: { backgroundColor: '#1E1E1E', borderColor: '#333', color: '#FFF' },
+  textArea: { backgroundColor: colors.white, borderRadius: 8, padding: 12, fontSize: 16, borderWidth: 1, borderColor: colors.border, minHeight: 100 },
+  saveButton: { backgroundColor: colors.primary, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, borderRadius: 12, marginTop: 10, marginBottom: 40 },
+  saveButtonDisabled: { opacity: 0.7 },
+  saveButtonText: { color: colors.white, fontSize: 16, fontWeight: 'bold' },
 });

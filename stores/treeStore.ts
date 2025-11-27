@@ -1,177 +1,120 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { supabase } from '@/lib/supabase';
 import { TreeType, BranchType, FruitType, RootType } from '@/types/tree';
-import { myTree } from '@/mocks/data';
 
 interface TreeState {
-  tree: TreeType;
+  tree: TreeType | null;
   isLoading: boolean;
   error: string | null;
-  newlyAddedBranchId: string | null;
-  
-  // Actions
-  addBranch: (branch: Omit<BranchType, 'id' | 'createdAt'>) => string;
-  setNewlyAddedBranch: (branchId: string) => void;
-  updateBranch: (id: string, updates: Partial<BranchType>) => void;
-  deleteBranch: (id: string) => void;
-  clearNewlyAddedBranch: () => void;
-  
-  addFruit: (fruit: Omit<FruitType, 'id' | 'createdAt'>) => void;
-  updateFruit: (id: string, updates: Partial<FruitType>) => void;
-  deleteFruit: (id: string) => void;
-  
-  addRoot: (root: Omit<RootType, 'id' | 'createdAt'>) => void;
-  updateRoot: (id: string, updates: Partial<RootType>) => void;
-  deleteRoot: (id: string) => void;
-  
-  fetchTree: (userId: string) => Promise<void>;
+  fetchMyTree: () => Promise<void>;
+  addBranch: (branch: Omit<BranchType, 'id' | 'createdAt'>) => Promise<void>;
+  deleteBranch: (branchId: string) => Promise<void>; // ✅
+  addFruit: (fruit: Omit<FruitType, 'id' | 'createdAt'>) => Promise<void>;
+  deleteFruit: (fruitId: string) => Promise<void>; // ✅
 }
 
-export const useTreeStore = create<TreeState>()(
-  persist(
-    (set, get) => ({
-      tree: myTree,
-      isLoading: false,
-      error: null,
-      newlyAddedBranchId: null,
-      
-      addBranch: (branch) => {
-        const newBranch: BranchType = {
-          ...branch,
-          id: `branch_${Date.now()}`,
-          createdAt: new Date().toISOString(),
-        };
-        
-        set((state) => ({
-          tree: {
-            ...state.tree,
-            branches: [...state.tree.branches, newBranch],
-          },
-          newlyAddedBranchId: newBranch.id,
+export const useTreeStore = create<TreeState>((set, get) => ({
+  tree: null,
+  isLoading: false,
+  error: null,
+
+  fetchMyTree: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error("No hay sesión activa");
+
+      // 1. Árbol
+      const { data: treeData, error: treeError } = await supabase.from('trees').select('*').eq('owner_id', session.user.id).single();
+      if (treeError) throw treeError;
+
+      // 2. Ramas
+      const { data: branchesDataRaw, error: branchesError } = await supabase.from('branches').select('*').eq('tree_id', treeData.id);
+      if (branchesError) throw branchesError;
+
+      const branchesData: BranchType[] = (branchesDataRaw || []).map((b: any) => ({
+        id: b.id, name: b.name, categoryId: b.category, color: b.color, createdAt: b.created_at, isShared: b.is_shared, position: { x: 0, y: 0 }
+      }));
+
+      // 3. Frutos
+      let fruitsData: FruitType[] = [];
+      if (branchesData.length > 0) {
+        const branchIds = branchesData.map(b => b.id);
+        const { data: fruitsRaw, error: fruitsError } = await supabase.from('fruits').select('*').in('branch_id', branchIds);
+        if (fruitsError) throw fruitsError;
+        fruitsData = (fruitsRaw || []).map((f: any) => ({
+          id: f.id, title: f.title, description: f.description, branchId: f.branch_id, mediaUrls: f.media_urls || [], createdAt: f.created_at, isShared: f.is_shared || false, position: { x: 0, y: 0 }
         }));
-        
-        return newBranch.id;
-      },
-      
-      setNewlyAddedBranch: (branchId) => {
-        set({ newlyAddedBranchId: branchId });
-      },
-      
-      clearNewlyAddedBranch: () => {
-        set({ newlyAddedBranchId: null });
-      },
-      
-      updateBranch: (id, updates) => {
-        set((state) => ({
-          tree: {
-            ...state.tree,
-            branches: state.tree.branches.map((branch) =>
-              branch.id === id ? { ...branch, ...updates } : branch
-            ),
-          },
-        }));
-      },
-      
-      deleteBranch: (id) => {
-        set((state) => ({
-          tree: {
-            ...state.tree,
-            branches: state.tree.branches.filter((branch) => branch.id !== id),
-            // Also remove fruits attached to this branch
-            fruits: state.tree.fruits.filter((fruit) => fruit.branchId !== id),
-          },
-        }));
-      },
-      
-      addFruit: (fruit) => {
-        const newFruit: FruitType = {
-          ...fruit,
-          id: `fruit_${Date.now()}`,
-          createdAt: new Date().toISOString(),
-        };
-        
-        set((state) => ({
-          tree: {
-            ...state.tree,
-            fruits: [...state.tree.fruits, newFruit],
-          },
-        }));
-      },
-      
-      updateFruit: (id, updates) => {
-        set((state) => ({
-          tree: {
-            ...state.tree,
-            fruits: state.tree.fruits.map((fruit) =>
-              fruit.id === id ? { ...fruit, ...updates } : fruit
-            ),
-          },
-        }));
-      },
-      
-      deleteFruit: (id) => {
-        set((state) => ({
-          tree: {
-            ...state.tree,
-            fruits: state.tree.fruits.filter((fruit) => fruit.id !== id),
-          },
-        }));
-      },
-      
-      addRoot: (root) => {
-        const newRoot: RootType = {
-          ...root,
-          id: `root_${Date.now()}`,
-          createdAt: new Date().toISOString(),
-        };
-        
-        set((state) => ({
-          tree: {
-            ...state.tree,
-            roots: [...state.tree.roots, newRoot],
-          },
-        }));
-      },
-      
-      updateRoot: (id, updates) => {
-        set((state) => ({
-          tree: {
-            ...state.tree,
-            roots: state.tree.roots.map((root) =>
-              root.id === id ? { ...root, ...updates } : root
-            ),
-          },
-        }));
-      },
-      
-      deleteRoot: (id) => {
-        set((state) => ({
-          tree: {
-            ...state.tree,
-            roots: state.tree.roots.filter((root) => root.id !== id),
-          },
-        }));
-      },
-      
-      fetchTree: async (userId) => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          // In a real app, this would be an API call
-          // For now, we're using mock data
-          set({ tree: myTree, isLoading: false });
-        } catch (error) {
-          set({ 
-            error: error instanceof Error ? error.message : "Error desconocido", 
-            isLoading: false 
-          });
-        }
-      },
-    }),
-    {
-      name: 'alma-tree-storage',
-      storage: createJSONStorage(() => AsyncStorage),
+      }
+
+      // 4. Raíces
+      const { data: rootsData } = await supabase.from('family_connections').select(`id, relation, created_at, relative:profiles!relative_id (name)`).eq('user_id', session.user.id);
+      const formattedRoots: RootType[] = (rootsData || []).map((r: any) => ({
+        id: r.id, name: r.relative?.name || 'Fam', relation: r.relation || 'Fam', createdAt: r.created_at, treeId: treeData.id
+      }));
+
+      set({ tree: { id: treeData.id, ownerId: treeData.owner_id, name: treeData.name, createdAt: treeData.created_at, branches: branchesData, fruits: fruitsData, roots: formattedRoots }, isLoading: false });
+
+    } catch (error: any) {
+      set({ error: error.message, isLoading: false });
     }
-  )
-);
+  },
+
+  addBranch: async (branch) => {
+    const currentTree = get().tree;
+    if (!currentTree) return;
+    try {
+      const { data, error } = await supabase.from('branches').insert({
+        tree_id: currentTree.id, name: branch.name, category: branch.categoryId, color: branch.color
+      }).select().single();
+      if (error) throw error;
+      // Update local
+      const newB = { id: data.id, name: data.name, categoryId: data.category, color: data.color, createdAt: data.created_at, isShared: data.is_shared, position: { x: 0, y: 0 } };
+      set(state => ({ tree: state.tree ? { ...state.tree, branches: [...state.tree.branches, newB] } : null }));
+    } catch (e) { console.error(e); }
+  },
+
+  deleteBranch: async (branchId) => {
+    try {
+      const { error } = await supabase.from('branches').delete().eq('id', branchId);
+      if (error) throw error;
+      set(state => {
+        if (!state.tree) return state;
+        return {
+          tree: {
+            ...state.tree,
+            branches: state.tree.branches.filter(b => b.id !== branchId),
+            fruits: state.tree.fruits.filter(f => f.branchId !== branchId) // Cascading local delete
+          }
+        };
+      });
+    } catch (e) { console.error(e); throw e; }
+  },
+
+  addFruit: async (fruit) => {
+    try {
+      const { data, error } = await supabase.from('fruits').insert({
+        branch_id: fruit.branchId, title: fruit.title, description: fruit.description, date: new Date().toISOString(), media_urls: fruit.mediaUrls || []
+      }).select().single();
+      if (error) throw error;
+      const newF = { id: data.id, title: data.title, description: data.description, branchId: data.branch_id, mediaUrls: data.media_urls, createdAt: data.created_at, isShared: false, position: { x: 0, y: 0 } };
+      set(state => ({ tree: state.tree ? { ...state.tree, fruits: [...state.tree.fruits, newF] } : null }));
+    } catch (e) { console.error(e); throw e; }
+  },
+
+  deleteFruit: async (fruitId) => {
+    try {
+      const { error } = await supabase.from('fruits').delete().eq('id', fruitId);
+      if (error) throw error;
+      set(state => {
+        if (!state.tree) return state;
+        return {
+          tree: {
+            ...state.tree,
+            fruits: state.tree.fruits.filter(f => f.id !== fruitId)
+          }
+        };
+      });
+    } catch (e) { console.error(e); throw e; }
+  }
+}));

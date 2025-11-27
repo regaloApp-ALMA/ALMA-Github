@@ -1,176 +1,119 @@
-import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TextInput, 
-  TouchableOpacity, 
-  ScrollView, 
-  Alert,
-  Image 
-} from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Image, ActivityIndicator } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import { useMemoryStore } from '@/stores/memoryStore';
 import { useTreeStore } from '@/stores/treeStore';
 import colors from '@/constants/colors';
 import { useThemeStore } from '@/stores/themeStore';
-import { Camera, Image as ImageIcon, Video, Calendar } from 'lucide-react-native';
+import { Image as ImageIcon } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { uploadMedia } from '@/lib/storageHelper';
+import { useUserStore } from '@/stores/userStore';
 
 export default function AddMemoryManualScreen() {
   const { branchId } = useLocalSearchParams<{ branchId?: string }>();
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [selectedBranch, setSelectedBranch] = useState(branchId || '');
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
-  const [attachments, setAttachments] = useState<string[]>([]);
-  
-  const { addMemory } = useMemoryStore();
-  const { tree, addFruit } = useTreeStore();
+  const { tree, fetchMyTree, addFruit } = useTreeStore();
+  const { user } = useUserStore();
   const { theme } = useThemeStore();
   const router = useRouter();
   const isDarkMode = theme === 'dark';
 
-  const handleSave = () => {
-    if (!title.trim() || !description.trim()) {
-      Alert.alert('Error', 'Por favor completa el título y la descripción');
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
+  const [selectedBranch, setSelectedBranch] = useState(branchId || '');
+  const [mediaUrl, setMediaUrl] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (!tree) fetchMyTree();
+    else if (!selectedBranch && tree.branches.length > 0) {
+      setSelectedBranch(tree.branches[0].id);
+    }
+  }, [tree]);
+
+  const handlePickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.5,
+    });
+
+    if (!result.canceled && user?.id) {
+      setIsUploading(true);
+      try {
+        const url = await uploadMedia(result.assets[0].uri, user.id, 'memories');
+        if (url) setMediaUrl(url);
+      } finally {
+        setIsUploading(false);
+      }
+    }
+  };
+
+  const handleSave = async () => {
+    if (!title.trim() || !selectedBranch) {
+      Alert.alert('Faltan datos', 'Escribe un título y elige una rama.');
       return;
     }
-    
-    // Add memory to store
-    addMemory({
-      title: title.trim(),
-      description: description.trim(),
-      date: selectedDate,
-    });
-    
-    // If we have a branch selected, add as fruit
-    if (selectedBranch) {
-      addFruit({
+
+    setIsSaving(true);
+    try {
+      // SOLUCIÓN AL ERROR: Ajustamos el objeto al tipo esperado o casteamos
+      await addFruit({
         title: title.trim(),
         description: description.trim(),
         branchId: selectedBranch,
+        mediaUrls: mediaUrl ? [mediaUrl] : [],
         isShared: false,
-        position: {
-          x: Math.random() * 0.6 + 0.2,
-          y: Math.random() * 0.6 + 0.2,
-        },
-      });
+        // Pasamos location y position aunque sean opcionales
+        location: { name: '' },
+        position: { x: 0, y: 0 }
+      } as any);
+
+      router.replace('/(tabs)/tree');
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    } finally {
+      setIsSaving(false);
     }
-    
-    Alert.alert(
-      'Recuerdo Guardado',
-      'Tu recuerdo ha sido añadido al árbol de vida.',
-      [
-        {
-          text: 'Ver Árbol',
-          onPress: () => router.replace('/(tabs)/tree'),
-        },
-        {
-          text: 'Crear Otro',
-          onPress: () => {
-            setTitle('');
-            setDescription('');
-            setSelectedBranch('');
-            setSelectedDate(new Date().toISOString().split('T')[0]);
-            setAttachments([]);
-          },
-        }
-      ]
-    );
-    
-    // Navigate back after a short delay to show the alert
-    setTimeout(() => {
-      if (branchId) {
-        router.back(); // Go back to branch details
-      } else {
-        router.replace('/(tabs)/tree'); // Go to tree view
-      }
-    }, 100);
   };
 
-  const addAttachment = (type: 'photo' | 'video') => {
-    // In a real app, this would open camera/gallery
-    Alert.alert(
-      'Añadir ' + (type === 'photo' ? 'Foto' : 'Video'),
-      'Esta funcionalidad se implementará con acceso a cámara y galería',
-      [{ text: 'OK' }]
-    );
-  };
+  if (!tree) return <View style={styles.center}><ActivityIndicator /></View>;
 
   return (
     <>
-      <Stack.Screen 
+      <Stack.Screen
         options={{
-          title: branchId ? 'Añadir Fruto' : 'Añadir Recuerdo',
-          headerStyle: {
-            backgroundColor: isDarkMode ? '#1a1a1a' : colors.primary,
-          },
-          headerTintColor: colors.white,
+          title: 'Nuevo Recuerdo',
+          headerStyle: { backgroundColor: isDarkMode ? '#1E1E1E' : colors.primary },
+          headerTintColor: '#FFF',
         }}
       />
-      
+
       <ScrollView style={[styles.container, isDarkMode && styles.containerDark]}>
-        <View style={styles.formGroup}>
-          <Text style={[styles.label, isDarkMode && styles.labelDark]}>Título del recuerdo</Text>
+        <View style={styles.group}>
+          <Text style={[styles.label, isDarkMode && styles.textWhite]}>Título</Text>
           <TextInput
             style={[styles.input, isDarkMode && styles.inputDark]}
             value={title}
             onChangeText={setTitle}
-            placeholder="Ej: Mi primer día de universidad"
-            placeholderTextColor={isDarkMode ? '#888' : colors.gray}
+            placeholder="Ej: El día de la graduación"
+            placeholderTextColor={colors.gray}
           />
         </View>
 
-        <View style={styles.formGroup}>
-          <Text style={[styles.label, isDarkMode && styles.labelDark]}>Descripción</Text>
-          <TextInput
-            style={[styles.textArea, isDarkMode && styles.inputDark]}
-            value={description}
-            onChangeText={setDescription}
-            placeholder="Describe este momento especial..."
-            placeholderTextColor={isDarkMode ? '#888' : colors.gray}
-            multiline
-            numberOfLines={6}
-            textAlignVertical="top"
-          />
-        </View>
-
-        <View style={styles.formGroup}>
-          <Text style={[styles.label, isDarkMode && styles.labelDark]}>Rama del árbol</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.branchSelector}>
-            <TouchableOpacity
-              style={[
-                styles.branchOption,
-                !selectedBranch && styles.branchOptionSelected,
-                isDarkMode && styles.branchOptionDark
-              ]}
-              onPress={() => setSelectedBranch('')}
-            >
-              <Text style={[
-                styles.branchOptionText,
-                !selectedBranch && styles.branchOptionTextSelected,
-                isDarkMode && styles.branchOptionTextDark
-              ]}>
-                Sin rama
-              </Text>
-            </TouchableOpacity>
-            
+        <View style={styles.group}>
+          <Text style={[styles.label, isDarkMode && styles.textWhite]}>Rama</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chips}>
             {tree.branches.map(branch => (
               <TouchableOpacity
                 key={branch.id}
                 style={[
-                  styles.branchOption,
-                  selectedBranch === branch.id && styles.branchOptionSelected,
-                  selectedBranch === branch.id && { backgroundColor: branch.color },
-                  isDarkMode && styles.branchOptionDark
+                  styles.chip,
+                  selectedBranch === branch.id && { backgroundColor: branch.color || colors.primary, borderColor: branch.color }
                 ]}
                 onPress={() => setSelectedBranch(branch.id)}
               >
-                <Text style={[
-                  styles.branchOptionText,
-                  selectedBranch === branch.id && styles.branchOptionTextSelected,
-                  isDarkMode && styles.branchOptionTextDark
-                ]}>
+                <Text style={[styles.chipText, selectedBranch === branch.id && { color: '#FFF' }]}>
                   {branch.name}
                 </Text>
               </TouchableOpacity>
@@ -178,58 +121,39 @@ export default function AddMemoryManualScreen() {
           </ScrollView>
         </View>
 
-        <View style={styles.formGroup}>
-          <Text style={[styles.label, isDarkMode && styles.labelDark]}>Fecha</Text>
+        <View style={styles.group}>
+          <Text style={[styles.label, isDarkMode && styles.textWhite]}>Historia</Text>
           <TextInput
-            style={[styles.input, isDarkMode && styles.inputDark]}
-            value={selectedDate}
-            onChangeText={setSelectedDate}
-            placeholder="YYYY-MM-DD"
-            placeholderTextColor={isDarkMode ? '#888' : colors.gray}
+            style={[styles.input, styles.area, isDarkMode && styles.inputDark]}
+            value={description}
+            onChangeText={setDescription}
+            multiline
+            placeholder="Cuéntalo todo..."
+            placeholderTextColor={colors.gray}
           />
         </View>
 
-        <View style={styles.formGroup}>
-          <Text style={[styles.label, isDarkMode && styles.labelDark]}>Archivos adjuntos</Text>
-          <View style={styles.attachmentButtons}>
-            <TouchableOpacity
-              style={[styles.attachmentButton, isDarkMode && styles.attachmentButtonDark]}
-              onPress={() => addAttachment('photo')}
-            >
-              <Camera size={24} color={isDarkMode ? colors.white : colors.primary} />
-              <Text style={[styles.attachmentButtonText, isDarkMode && styles.attachmentButtonTextDark]}>
-                Foto
-              </Text>
+        <View style={styles.group}>
+          <Text style={[styles.label, isDarkMode && styles.textWhite]}>Foto</Text>
+          {mediaUrl ? (
+            <View>
+              <Image source={{ uri: mediaUrl }} style={styles.preview} />
+              <TouchableOpacity onPress={() => setMediaUrl('')} style={styles.removeBtn}><Text style={{ color: 'white' }}>X</Text></TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity style={[styles.uploadBox, isDarkMode && styles.uploadBoxDark]} onPress={handlePickImage}>
+              {isUploading ? <ActivityIndicator /> : <ImageIcon size={32} color={colors.gray} />}
+              <Text style={{ color: colors.gray, marginTop: 8 }}>Toca para subir</Text>
             </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[styles.attachmentButton, isDarkMode && styles.attachmentButtonDark]}
-              onPress={() => addAttachment('photo')}
-            >
-              <ImageIcon size={24} color={isDarkMode ? colors.white : colors.primary} />
-              <Text style={[styles.attachmentButtonText, isDarkMode && styles.attachmentButtonTextDark]}>
-                Galería
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity
-              style={[styles.attachmentButton, isDarkMode && styles.attachmentButtonDark]}
-              onPress={() => addAttachment('video')}
-            >
-              <Video size={24} color={isDarkMode ? colors.white : colors.primary} />
-              <Text style={[styles.attachmentButtonText, isDarkMode && styles.attachmentButtonTextDark]}>
-                Video
-              </Text>
-            </TouchableOpacity>
-          </View>
+          )}
         </View>
 
         <TouchableOpacity
-          style={[styles.saveButton, (!title.trim() || !description.trim()) && styles.saveButtonDisabled]}
+          style={[styles.saveButton, isSaving && styles.disabled]}
           onPress={handleSave}
-          disabled={!title.trim() || !description.trim()}
+          disabled={isSaving}
         >
-          <Text style={styles.saveButtonText}>Guardar Recuerdo</Text>
+          {isSaving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveText}>Guardar en el Árbol</Text>}
         </TouchableOpacity>
       </ScrollView>
     </>
@@ -237,119 +161,23 @@ export default function AddMemoryManualScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    padding: 16,
-  },
-  containerDark: {
-    backgroundColor: '#121212',
-  },
-  formGroup: {
-    marginBottom: 24,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  labelDark: {
-    color: colors.white,
-  },
-  input: {
-    backgroundColor: colors.white,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  inputDark: {
-    backgroundColor: '#2a2a2a',
-    borderColor: '#444',
-    color: colors.white,
-  },
-  textArea: {
-    backgroundColor: colors.white,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    minHeight: 120,
-  },
-  branchSelector: {
-    flexDirection: 'row',
-  },
-  branchOption: {
-    backgroundColor: colors.white,
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  branchOptionDark: {
-    backgroundColor: '#2a2a2a',
-    borderColor: '#444',
-  },
-  branchOptionSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  branchOptionText: {
-    fontSize: 14,
-    color: colors.text,
-  },
-  branchOptionTextDark: {
-    color: colors.white,
-  },
-  branchOptionTextSelected: {
-    color: colors.white,
-    fontWeight: 'bold',
-  },
-  attachmentButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  attachmentButton: {
-    flex: 1,
-    backgroundColor: colors.white,
-    borderRadius: 8,
-    padding: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-    gap: 8,
-  },
-  attachmentButtonDark: {
-    backgroundColor: '#2a2a2a',
-    borderColor: '#444',
-  },
-  attachmentButtonText: {
-    fontSize: 12,
-    color: colors.text,
-    fontWeight: 'bold',
-  },
-  attachmentButtonTextDark: {
-    color: colors.white,
-  },
-  saveButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 16,
-    marginBottom: 32,
-  },
-  saveButtonDisabled: {
-    backgroundColor: colors.gray,
-  },
-  saveButtonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
+  container: { flex: 1, backgroundColor: '#F5F7FA', padding: 20 },
+  containerDark: { backgroundColor: '#121212' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  group: { marginBottom: 24 },
+  label: { fontSize: 16, fontWeight: 'bold', marginBottom: 8, color: colors.text },
+  textWhite: { color: '#FFF' },
+  input: { backgroundColor: '#FFF', borderRadius: 12, padding: 16, fontSize: 16, borderWidth: 1, borderColor: '#E0E0E0' },
+  inputDark: { backgroundColor: '#2C2C2C', borderColor: '#444', color: '#FFF' },
+  area: { height: 120, textAlignVertical: 'top' },
+  chips: { flexDirection: 'row' },
+  chip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#DDD', marginRight: 8, backgroundColor: '#FFF' },
+  chipText: { fontWeight: '600', color: colors.text },
+  uploadBox: { height: 150, borderWidth: 2, borderColor: '#E0E0E0', borderStyle: 'dashed', borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFF' },
+  uploadBoxDark: { backgroundColor: '#2C2C2C', borderColor: '#444' },
+  preview: { width: '100%', height: 200, borderRadius: 12 },
+  removeBtn: { position: 'absolute', top: 10, right: 10, backgroundColor: 'rgba(0,0,0,0.6)', width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
+  saveButton: { backgroundColor: colors.primary, padding: 18, borderRadius: 12, alignItems: 'center', marginBottom: 40 },
+  disabled: { opacity: 0.7 },
+  saveText: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
 });

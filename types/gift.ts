@@ -8,6 +8,8 @@ export type GiftType = {
   createdAt: string;
   status: 'pending' | 'accepted' | 'rejected';
   contentId: string;
+  // AÑADIDO: Este es el campo que faltaba
+  contentData?: any;
   unlockDate?: string;
   isNew: boolean;
 };

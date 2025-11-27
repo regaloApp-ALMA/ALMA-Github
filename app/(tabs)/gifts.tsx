@@ -7,8 +7,10 @@ import colors from '@/constants/colors';
 import { Gift } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useThemeStore } from '@/stores/themeStore';
+import { GiftType } from '@/types/gift'; // Importamos el tipo
 
 export default function GiftsScreen() {
+  // Asegúrate de que fetchGifts no espere argumentos y acceptGift espere un objeto
   const { gifts, fetchGifts, acceptGift, rejectGift } = useGiftStore();
   const { user } = useUserStore();
   const { theme } = useThemeStore();
@@ -17,16 +19,18 @@ export default function GiftsScreen() {
 
   useEffect(() => {
     if (user) {
-      fetchGifts(user.id);
+      // CORREGIDO: Ya no pasamos user.id, el store usa la sesión activa
+      fetchGifts();
     }
   }, [user]);
 
-  const handleAcceptGift = (id: string) => {
-    acceptGift(id);
+  // CORREGIDO: Ahora pasamos el objeto gift completo
+  const handleAcceptGift = async (gift: GiftType) => {
+    await acceptGift(gift);
   };
 
-  const handleRejectGift = (id: string) => {
-    rejectGift(id);
+  const handleRejectGift = async (id: string) => {
+    await rejectGift(id);
   };
 
   const handleCreateGift = () => {
@@ -40,16 +44,16 @@ export default function GiftsScreen() {
         <Text style={[styles.sectionDescription, isDarkMode && styles.sectionDescriptionDark]}>
           Regala una rama de recuerdos, un árbol personalizado o una cápsula del tiempo a alguien especial.
         </Text>
-        
+
         <TouchableOpacity style={[styles.createButton, isDarkMode && styles.createButtonDark]} onPress={handleCreateGift}>
           <Gift size={20} color={colors.white} />
           <Text style={styles.createButtonText}>Crear nuevo regalo</Text>
         </TouchableOpacity>
       </View>
-      
+
       <View style={[styles.receivedSection, isDarkMode && styles.receivedSectionDark]}>
         <Text style={[styles.sectionTitle, isDarkMode && styles.sectionTitleDark]}>Regalos recibidos</Text>
-        
+
         {gifts.length === 0 ? (
           <View style={[styles.emptyState, isDarkMode && styles.emptyStateDark]}>
             <Text style={[styles.emptyStateText, isDarkMode && styles.emptyStateTextDark]}>No tienes regalos recibidos</Text>
@@ -59,7 +63,8 @@ export default function GiftsScreen() {
             <GiftCard
               key={gift.id}
               gift={gift}
-              onAccept={() => handleAcceptGift(gift.id)}
+              // CORREGIDO: Pasamos el objeto completo
+              onAccept={() => handleAcceptGift(gift)}
               onReject={() => handleRejectGift(gift.id)}
             />
           ))

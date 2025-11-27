@@ -1,163 +1,180 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Session, AuthChangeEvent } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabase';
 import { UserType } from '@/types/user';
-import { currentUser } from '@/mocks/data';
-import { trpcClient } from '@/lib/trpc';
+import { differenceInCalendarDays } from 'date-fns';
+import { makeRedirectUri } from 'expo-auth-session';
+import * as WebBrowser from 'expo-web-browser';
+
+WebBrowser.maybeCompleteAuthSession();
 
 interface UserState {
   user: UserType | null;
+  session: Session | null;
   isLoading: boolean;
-  error: string | null;
   isAuthenticated: boolean;
-  
-  // Actions
+  error: string | null;
+
+  initialize: () => Promise<void>;
+  updateStreak: () => Promise<void>; // Acción pública para llamar desde otros stores
   login: (email: string, password: string) => Promise<void>;
-  loginWithGoogle: () => Promise<void>;
   register: (name: string, email: string, password: string) => Promise<void>;
-  logout: () => void;
-  updateProfile: (updates: Partial<UserType>) => void;
   updateUser: (updates: Partial<UserType>) => void;
-  addConnection: (userId: string) => void;
-  removeConnection: (userId: string) => void;
+  logout: () => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
 }
 
-export const useUserStore = create<UserState>()(
-  persist(
-    (set) => ({
-      user: null,
-      isLoading: false,
-      error: null,
-      isAuthenticated: false,
-      
-      login: async (email, password) => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          const result = await trpcClient.auth.login.mutate({ email, password });
-          
-          if (result.success) {
-            const userData: UserType = {
-              ...currentUser,
-              ...result.user,
-            };
-            
-            set({ 
-              user: userData,
-              isAuthenticated: true,
-              isLoading: false 
-            });
-          } else {
-            throw new Error('Error en el inicio de sesión');
-          }
-        } catch (error) {
-          set({ 
-            error: error instanceof Error ? error.message : "Error de autenticación", 
-            isLoading: false,
-            isAuthenticated: false
-          });
-          throw error;
-        }
-      },
-      
-      loginWithGoogle: async () => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          // In a real app, this would integrate with Google Auth
-          // For now, we're using mock data
-          set({ 
-            user: currentUser,
-            isAuthenticated: true,
-            isLoading: false 
-          });
-        } catch (error) {
-          set({ 
-            error: error instanceof Error ? error.message : "Error de autenticación con Google", 
-            isLoading: false,
-            isAuthenticated: false
-          });
-          throw error;
-        }
-      },
-      
-      register: async (name, email, password) => {
-        set({ isLoading: true, error: null });
-        
-        try {
-          const result = await trpcClient.auth.register.mutate({ name, email, password });
-          
-          if (result.success) {
-            const userData: UserType = {
-              ...currentUser,
-              ...result.user,
-              connections: [],
-              treeId: `tree_${result.user.id}`,
-            };
-            
-            set({ 
-              user: userData,
-              isAuthenticated: true,
-              isLoading: false 
-            });
-          } else {
-            throw new Error('Error en el registro');
-          }
-        } catch (error) {
-          set({ 
-            error: error instanceof Error ? error.message : "Error de registro", 
-            isLoading: false,
-            isAuthenticated: false
-          });
-          throw error;
-        }
-      },
-      
-      logout: () => {
-        set({ user: null, isAuthenticated: false });
-      },
-      
-      updateProfile: (updates) => {
-        set((state) => ({
-          user: state.user ? { ...state.user, ...updates } : null,
-        }));
-      },
-      
-      updateUser: (updates) => {
-        set((state) => ({
-          user: state.user ? { ...state.user, ...updates } : null,
-        }));
-      },
-      
-      addConnection: (userId) => {
-        set((state) => {
-          if (!state.user) return state;
-          
-          return {
-            user: {
-              ...state.user,
-              connections: [...state.user.connections, userId],
-            },
-          };
-        });
-      },
-      
-      removeConnection: (userId) => {
-        set((state) => {
-          if (!state.user) return state;
-          
-          return {
-            user: {
-              ...state.user,
-              connections: state.user.connections.filter((id) => id !== userId),
-            },
-          };
-        });
-      },
-    }),
-    {
-      name: 'alma-user-storage',
-      storage: createJSONStorage(() => AsyncStorage),
+export const useUserStore = create<UserState>((set, get) => ({
+  user: null,
+  session: null,
+  isLoading: false,
+  isAuthenticated: false,
+  error: null,
+
+  // Esta función se llamará SOLO cuando se cree un fruto
+  updateStreak: async () => {
+    const currentUser = get().user;
+    if (!currentUser) return;
+
+    const today = new Date().toISOString().split('T')[0];
+    // Usamos 'any' temporalmente porque last_interaction_date no está en el tipo base UserType aún
+    const lastDate = (currentUser as any).last_interaction_date;
+    let newStreak = (currentUser as any).current_streak || 0;
+
+    // Si ya sumó hoy, no hacemos nada
+    if (lastDate === today) return;
+
+    if (lastDate) {
+      const diff = differenceInCalendarDays(new Date(today), new Date(lastDate));
+      if (diff === 1) {
+        // Fue ayer, suma racha
+        newStreak += 1;
+      } else {
+        // Pasó más de un día, reinicio
+        newStreak = 1;
+      }
+    } else {
+      // Primera vez
+      newStreak = 1;
     }
-  )
-);
+
+    // Actualización optimista (visual instantánea)
+    set(state => ({
+      user: state.user ? {
+        ...state.user,
+        current_streak: newStreak,
+        last_interaction_date: today
+      } as any : null
+    }));
+
+    // Guardar en DB
+    try {
+      await supabase.from('profiles').update({
+        current_streak: newStreak,
+        last_interaction_date: today
+      }).eq('id', currentUser.id);
+    } catch (error) {
+      console.error("Error guardando racha:", error);
+    }
+  },
+
+  initialize: async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (session) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        set({
+          session,
+          user: profile ? { ...profile, email: session.user.email } as UserType : null,
+          isAuthenticated: true
+        });
+      }
+    } catch (error) {
+      console.error('Error inicializando:', error);
+    }
+
+    supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
+      if (event === 'SIGNED_OUT' || !session) {
+        set({ user: null, session: null, isAuthenticated: false });
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+
+        set({
+          session,
+          user: profile ? { ...profile, email: session.user.email } as UserType : null,
+          isAuthenticated: true
+        });
+      }
+    });
+  },
+
+  login: async (email, password) => {
+    set({ isLoading: true, error: null });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) {
+      set({ error: error.message, isLoading: false });
+      throw error;
+    }
+    set({ isLoading: false });
+  },
+
+  register: async (name, email, password) => {
+    set({ isLoading: true, error: null });
+    const { error: authError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { data: { name: name } }
+    });
+    if (authError) {
+      set({ error: authError.message, isLoading: false });
+      throw authError;
+    }
+    set({ isLoading: false });
+  },
+
+  updateUser: (updates) => {
+    set((state) => ({
+      user: state.user ? { ...state.user, ...updates } : null,
+    }));
+  },
+
+  logout: async () => {
+    // CORRECCIÓN: Envolvemos en try/catch y limpiamos estado SIEMPRE, falle la red o no.
+    try {
+      await supabase.auth.signOut();
+    } catch (error) {
+      console.log("Error de red al cerrar sesión (ignorable):", error);
+    } finally {
+      set({ user: null, session: null, isAuthenticated: false });
+    }
+  },
+
+  loginWithGoogle: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      const redirectUrl = makeRedirectUri({ path: '/auth/callback' });
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: redirectUrl, skipBrowserRedirect: true },
+      });
+      if (error) throw error;
+      if (data?.url) {
+        await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+      }
+    } catch (error: any) {
+      set({ error: error.message, isLoading: false });
+    } finally {
+      set({ isLoading: false });
+    }
+  }
+}));

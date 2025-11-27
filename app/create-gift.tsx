@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert, Switch, Image, ActivityIndicator } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useGiftStore } from '@/stores/giftStore';
 import { useTreeStore } from '@/stores/treeStore';
 import { useUserStore } from '@/stores/userStore';
 import colors from '@/constants/colors';
 import { useThemeStore } from '@/stores/themeStore';
-import { Gift, Clock, Send, Heart, Users } from 'lucide-react-native';
+import { Gift, Clock, Send, Heart, Image as ImageIcon, X } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { uploadMedia } from '@/lib/storageHelper';
 
 export default function CreateGiftScreen() {
   const [giftType, setGiftType] = useState<'instant' | 'timeCapsule' | null>(null);
@@ -14,16 +16,41 @@ export default function CreateGiftScreen() {
   const [description, setDescription] = useState('');
   const [recipientEmail, setRecipientEmail] = useState('');
   const [openDate, setOpenDate] = useState('');
-  const [selectedBranch, setSelectedBranch] = useState('');
-  
+  const [mediaUrls, setMediaUrls] = useState<string[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
   const { createGift } = useGiftStore();
-  const { tree } = useTreeStore();
   const { user } = useUserStore();
   const { theme } = useThemeStore();
   const router = useRouter();
   const isDarkMode = theme === 'dark';
 
-  const handleCreateGift = () => {
+  const handlePickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      allowsEditing: true,
+      quality: 0.6,
+    });
+
+    if (!result.canceled && user?.id) {
+      setIsUploading(true);
+      try {
+        const url = await uploadMedia(result.assets[0].uri, user.id, 'memories');
+        if (url) setMediaUrls([...mediaUrls, url]);
+      } finally {
+        setIsUploading(false);
+      }
+    }
+  };
+
+  const removeImage = (index: number) => {
+    const newUrls = [...mediaUrls];
+    newUrls.splice(index, 1);
+    setMediaUrls(newUrls);
+  };
+
+  const handleCreateGift = async () => {
     if (!title.trim() || !description.trim() || !recipientEmail.trim()) {
       Alert.alert('Error', 'Por favor completa todos los campos obligatorios');
       return;
@@ -34,43 +61,42 @@ export default function CreateGiftScreen() {
       return;
     }
 
-    const gift = {
-      type: giftType === 'timeCapsule' ? ('timeCapsule' as const) : ('branch' as const),
-      senderId: user?.id || 'unknown',
-      senderName: user?.name || 'Desconocido',
-      recipientId: recipientEmail.trim(),
-      message: description.trim(),
-      contentId: selectedBranch || `content_${Date.now()}`,
-      unlockDate: giftType === 'timeCapsule' ? openDate : undefined,
-    };
+    setIsSaving(true);
+    try {
+      await createGift({
+        type: giftType === 'timeCapsule' ? 'timeCapsule' : 'fruit', // Usamos 'fruit' como regalo instantáneo
+        recipientEmail: recipientEmail.trim(),
+        message: description.trim(),
+        content: {
+          title: title,
+          description: description,
+          mediaUrls: mediaUrls
+        },
+        unlockDate: giftType === 'timeCapsule' ? openDate : undefined,
+      });
 
-    createGift(gift);
-
-    Alert.alert(
-      'Regalo Creado',
-      `Tu ${giftType === 'timeCapsule' ? 'cápsula del tiempo' : 'regalo'} ha sido enviado a ${recipientEmail}`,
-      [
-        {
-          text: 'OK',
-          onPress: () => router.back(),
-        }
-      ]
-    );
+      Alert.alert(
+        'Regalo Enviado',
+        `Tu ${giftType === 'timeCapsule' ? 'cápsula del tiempo' : 'regalo'} ha sido enviado a ${recipientEmail}`,
+        [{ text: 'OK', onPress: () => router.back() }]
+      );
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   if (!giftType) {
     return (
       <>
-        <Stack.Screen 
+        <Stack.Screen
           options={{
             title: 'Crear Regalo',
-            headerStyle: {
-              backgroundColor: isDarkMode ? '#1E1E1E' : colors.primary,
-            },
+            headerStyle: { backgroundColor: isDarkMode ? '#1E1E1E' : colors.primary },
             headerTintColor: colors.white,
           }}
         />
-        
         <View style={[styles.container, isDarkMode && styles.containerDark]}>
           <View style={[styles.header, isDarkMode && styles.headerDark]}>
             <Gift size={48} color={colors.primary} />
@@ -122,28 +148,15 @@ export default function CreateGiftScreen() {
 
   return (
     <>
-      <Stack.Screen 
+      <Stack.Screen
         options={{
           title: giftType === 'timeCapsule' ? 'Cápsula del Tiempo' : 'Regalo Instantáneo',
-          headerStyle: {
-            backgroundColor: isDarkMode ? '#1E1E1E' : colors.primary,
-          },
+          headerStyle: { backgroundColor: isDarkMode ? '#1E1E1E' : colors.primary },
           headerTintColor: colors.white,
         }}
       />
-      
-      <ScrollView style={[styles.container, isDarkMode && styles.containerDark]}>
-        <View style={[styles.formHeader, isDarkMode && styles.formHeaderDark]}>
-          {giftType === 'timeCapsule' ? (
-            <Clock size={32} color={colors.warning} />
-          ) : (
-            <Heart size={32} color={colors.primary} />
-          )}
-          <Text style={[styles.formTitle, isDarkMode && styles.formTitleDark]}>
-            {giftType === 'timeCapsule' ? 'Crear Cápsula del Tiempo' : 'Crear Regalo Especial'}
-          </Text>
-        </View>
 
+      <ScrollView style={[styles.container, isDarkMode && styles.containerDark]}>
         <View style={styles.formGroup}>
           <Text style={[styles.label, isDarkMode && styles.labelDark]}>Título del regalo</Text>
           <TextInput
@@ -156,7 +169,7 @@ export default function CreateGiftScreen() {
         </View>
 
         <View style={styles.formGroup}>
-          <Text style={[styles.label, isDarkMode && styles.labelDark]}>Mensaje</Text>
+          <Text style={[styles.label, isDarkMode && styles.labelDark]}>Mensaje / Recuerdo</Text>
           <TextInput
             style={[styles.textArea, isDarkMode && styles.inputDark]}
             value={description}
@@ -192,67 +205,49 @@ export default function CreateGiftScreen() {
               placeholder="YYYY-MM-DD"
               placeholderTextColor={isDarkMode ? '#666' : colors.gray}
             />
-            <Text style={[styles.helpText, isDarkMode && styles.helpTextDark]}>
-              La cápsula se abrirá automáticamente en esta fecha
-            </Text>
           </View>
         )}
 
         <View style={styles.formGroup}>
-          <Text style={[styles.label, isDarkMode && styles.labelDark]}>Incluir rama del árbol (opcional)</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.branchSelector}>
-            <TouchableOpacity
-              style={[
-                styles.branchOption,
-                !selectedBranch && styles.branchOptionSelected,
-                isDarkMode && styles.branchOptionDark
-              ]}
-              onPress={() => setSelectedBranch('')}
-            >
-              <Text style={[
-                styles.branchOptionText,
-                !selectedBranch && styles.branchOptionTextSelected,
-                isDarkMode && styles.branchOptionTextDark
-              ]}>
-                Ninguna
-              </Text>
+          <Text style={[styles.label, isDarkMode && styles.labelDark]}>Adjuntar recuerdos (Fotos/Videos)</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity style={styles.attachButton} onPress={handlePickImage}>
+              {isUploading ? <ActivityIndicator size="small" color={colors.primary} /> : <ImageIcon size={24} color={colors.primary} />}
+              <Text style={styles.attachText}>Añadir</Text>
             </TouchableOpacity>
-            
-            {tree.branches.map(branch => (
-              <TouchableOpacity
-                key={branch.id}
-                style={[
-                  styles.branchOption,
-                  selectedBranch === branch.id && styles.branchOptionSelected,
-                  selectedBranch === branch.id && { backgroundColor: branch.color },
-                  isDarkMode && styles.branchOptionDark
-                ]}
-                onPress={() => setSelectedBranch(branch.id)}
-              >
-                <Text style={[
-                  styles.branchOptionText,
-                  selectedBranch === branch.id && styles.branchOptionTextSelected,
-                  isDarkMode && styles.branchOptionTextDark
-                ]}>
-                  {branch.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
+
+            <ScrollView horizontal style={{ marginLeft: 10 }}>
+              {mediaUrls.map((url, i) => (
+                <View key={i} style={{ position: 'relative', marginRight: 10 }}>
+                  <Image source={{ uri: url }} style={{ width: 50, height: 50, borderRadius: 8 }} />
+                  <TouchableOpacity
+                    style={styles.removeImageBtn}
+                    onPress={() => removeImage(i)}
+                  >
+                    <X size={12} color="#FFF" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
         </View>
 
         <TouchableOpacity
           style={[
             styles.createButton,
-            (!title.trim() || !description.trim() || !recipientEmail.trim()) && styles.createButtonDisabled,
+            (!title || !description || !recipientEmail || isSaving) && styles.createButtonDisabled,
             isDarkMode && styles.createButtonDark
           ]}
           onPress={handleCreateGift}
-          disabled={!title.trim() || !description.trim() || !recipientEmail.trim()}
+          disabled={!title || !description || !recipientEmail || isSaving}
         >
-          <Text style={styles.createButtonText}>
-            {giftType === 'timeCapsule' ? 'Crear Cápsula del Tiempo' : 'Enviar Regalo'}
-          </Text>
+          {isSaving ? (
+            <ActivityIndicator color="#FFF" />
+          ) : (
+            <Text style={styles.createButtonText}>
+              {giftType === 'timeCapsule' ? 'Sellar Cápsula' : 'Enviar Regalo'}
+            </Text>
+          )}
         </TouchableOpacity>
       </ScrollView>
     </>
@@ -260,197 +255,33 @@ export default function CreateGiftScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    padding: 16,
-  },
-  containerDark: {
-    backgroundColor: '#121212',
-  },
-  header: {
-    alignItems: 'center',
-    padding: 32,
-    backgroundColor: colors.white,
-    borderRadius: 16,
-    marginBottom: 32,
-  },
-  headerDark: {
-    backgroundColor: '#1E1E1E',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginTop: 16,
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  headerTitleDark: {
-    color: colors.white,
-  },
-  headerSubtitle: {
-    fontSize: 16,
-    color: colors.textLight,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  headerSubtitleDark: {
-    color: '#AAA',
-  },
-  giftTypeOption: {
-    flexDirection: 'row',
-    backgroundColor: colors.white,
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  giftTypeOptionDark: {
-    backgroundColor: '#1E1E1E',
-  },
-  giftTypeIcon: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  giftTypeContent: {
-    flex: 1,
-  },
-  giftTypeTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  giftTypeTitleDark: {
-    color: colors.white,
-  },
-  giftTypeDescription: {
-    fontSize: 14,
-    color: colors.textLight,
-    lineHeight: 20,
-  },
-  giftTypeDescriptionDark: {
-    color: '#AAA',
-  },
-  formHeader: {
-    alignItems: 'center',
-    padding: 24,
-    backgroundColor: colors.white,
-    borderRadius: 16,
-    marginBottom: 24,
-  },
-  formHeaderDark: {
-    backgroundColor: '#1E1E1E',
-  },
-  formTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginTop: 12,
-  },
-  formTitleDark: {
-    color: colors.white,
-  },
-  formGroup: {
-    marginBottom: 20,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 8,
-  },
-  labelDark: {
-    color: colors.white,
-  },
-  input: {
-    backgroundColor: colors.white,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  inputDark: {
-    backgroundColor: '#1E1E1E',
-    borderColor: '#333',
-    color: colors.white,
-  },
-  textArea: {
-    backgroundColor: colors.white,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    minHeight: 120,
-  },
-  helpText: {
-    fontSize: 12,
-    color: colors.textLight,
-    marginTop: 4,
-  },
-  helpTextDark: {
-    color: '#AAA',
-  },
-  branchSelector: {
-    flexDirection: 'row',
-  },
-  branchOption: {
-    backgroundColor: colors.white,
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  branchOptionDark: {
-    backgroundColor: '#1E1E1E',
-    borderColor: '#333',
-  },
-  branchOptionSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  branchOptionText: {
-    fontSize: 14,
-    color: colors.text,
-  },
-  branchOptionTextDark: {
-    color: colors.white,
-  },
-  branchOptionTextSelected: {
-    color: colors.white,
-    fontWeight: 'bold',
-  },
-  createButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 16,
-    marginBottom: 32,
-  },
-  createButtonDark: {
-    backgroundColor: colors.primary,
-  },
-  createButtonDisabled: {
-    backgroundColor: colors.gray,
-  },
-  createButtonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
+  container: { flex: 1, backgroundColor: colors.background, padding: 16 },
+  containerDark: { backgroundColor: '#121212' },
+  header: { alignItems: 'center', padding: 32, backgroundColor: colors.white, borderRadius: 16, marginBottom: 32 },
+  headerDark: { backgroundColor: '#1E1E1E' },
+  headerTitle: { fontSize: 24, fontWeight: 'bold', color: colors.text, marginTop: 16, marginBottom: 8, textAlign: 'center' },
+  headerTitleDark: { color: colors.white },
+  headerSubtitle: { fontSize: 16, color: colors.textLight, textAlign: 'center', lineHeight: 22 },
+  headerSubtitleDark: { color: '#AAA' },
+  giftTypeOption: { flexDirection: 'row', backgroundColor: colors.white, borderRadius: 16, padding: 20, marginBottom: 16, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 4 },
+  giftTypeOptionDark: { backgroundColor: '#1E1E1E' },
+  giftTypeIcon: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
+  giftTypeContent: { flex: 1 },
+  giftTypeTitle: { fontSize: 18, fontWeight: 'bold', color: colors.text, marginBottom: 4 },
+  giftTypeTitleDark: { color: colors.white },
+  giftTypeDescription: { fontSize: 14, color: colors.textLight, lineHeight: 20 },
+  giftTypeDescriptionDark: { color: '#AAA' },
+  formGroup: { marginBottom: 20 },
+  label: { fontSize: 16, fontWeight: 'bold', color: colors.text, marginBottom: 8 },
+  labelDark: { color: colors.white },
+  input: { backgroundColor: colors.white, borderRadius: 8, padding: 12, fontSize: 16, borderWidth: 1, borderColor: colors.border },
+  inputDark: { backgroundColor: '#1E1E1E', borderColor: '#333', color: colors.white },
+  textArea: { backgroundColor: colors.white, borderRadius: 8, padding: 12, fontSize: 16, borderWidth: 1, borderColor: colors.border, minHeight: 120 },
+  createButton: { backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 16, marginBottom: 32 },
+  createButtonDark: { backgroundColor: colors.primary },
+  createButtonDisabled: { backgroundColor: colors.gray },
+  createButtonText: { color: colors.white, fontSize: 16, fontWeight: 'bold' },
+  attachButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary + '15', padding: 10, borderRadius: 10 },
+  attachText: { color: colors.primary, fontWeight: 'bold', marginLeft: 6 },
+  removeImageBtn: { position: 'absolute', top: -5, right: -5, backgroundColor: 'red', width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' }
 });

@@ -1,10 +1,22 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Switch } from 'react-native';
-import { Stack } from 'expo-router';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Switch, Alert, ActivityIndicator } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
 import colors from '@/constants/colors';
-import { FileText, Info, User, Calendar, Mail, Phone } from 'lucide-react-native';
+import { FileText, Info, User, Calendar, Mail, Phone, Save } from 'lucide-react-native';
+import { supabase } from '@/lib/supabase';
+import { useUserStore } from '@/stores/userStore';
+import { useThemeStore } from '@/stores/themeStore';
 
 export default function DigitalLegacyScreen() {
+  const { user } = useUserStore();
+  const { theme } = useThemeStore();
+  const router = useRouter();
+  const isDarkMode = theme === 'dark';
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // Estado del formulario
   const [heirName, setHeirName] = useState('');
   const [heirEmail, setHeirEmail] = useState('');
   const [heirPhone, setHeirPhone] = useState('');
@@ -12,292 +24,210 @@ export default function DigitalLegacyScreen() {
   const [message, setMessage] = useState('');
   const [shareFullTree, setShareFullTree] = useState(true);
   const [sharePrivateBranches, setSharePrivateBranches] = useState(false);
-  const [sharePasswords, setSharePasswords] = useState(false);
 
-  const handleSave = () => {
-    // Aquí iría la lógica para guardar el testamento digital
-    alert('Testamento digital guardado correctamente');
+  // Cargar datos existentes
+  useEffect(() => {
+    async function fetchLegacy() {
+      if (!user) return;
+      try {
+        const { data, error } = await supabase
+          .from('digital_legacies')
+          .select('*')
+          .eq('user_id', user.id)
+          .single();
+
+        if (data) {
+          setHeirName(data.heir_name || '');
+          setHeirEmail(data.heir_email || '');
+          setHeirPhone(data.heir_phone || '');
+          setActivationDate(data.activation_date || '');
+          setMessage(data.message || '');
+          setShareFullTree(data.share_full_tree);
+          setSharePrivateBranches(data.share_private);
+        }
+      } catch (e) {
+        // Si no existe, no pasa nada, es nuevo
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchLegacy();
+  }, [user]);
+
+  const handleSave = async () => {
+    if (!heirName || !heirEmail) {
+      Alert.alert('Datos incompletos', 'Por favor indica al menos el nombre y email del heredero.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const legacyData = {
+        user_id: user?.id,
+        heir_name: heirName,
+        heir_email: heirEmail,
+        heir_phone: heirPhone,
+        activation_date: activationDate || null, // Debería ser un Date picker real
+        message: message,
+        share_full_tree: shareFullTree,
+        share_private: sharePrivateBranches,
+        updated_at: new Date().toISOString()
+      };
+
+      // Upsert (Insertar o Actualizar)
+      const { error } = await supabase
+        .from('digital_legacies')
+        .upsert(legacyData, { onConflict: 'user_id' });
+
+      if (error) throw error;
+
+      Alert.alert('Guardado', 'Tu testamento digital ha sido actualizado correctamente.');
+      router.back();
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    } finally {
+      setSaving(false);
+    }
   };
+
+  if (loading) {
+    return (
+      <View style={[styles.container, styles.center, isDarkMode && styles.containerDark]}>
+        <ActivityIndicator color={colors.primary} />
+      </View>
+    );
+  }
 
   return (
     <>
-      <Stack.Screen 
+      <Stack.Screen
         options={{
           title: 'Testamento Digital',
-          headerStyle: {
-            backgroundColor: colors.primary,
-          },
+          headerStyle: { backgroundColor: isDarkMode ? '#1E1E1E' : colors.primary },
           headerTintColor: colors.white,
         }}
       />
-      
-      <ScrollView style={styles.container}>
-        <View style={styles.infoCard}>
+
+      <ScrollView style={[styles.container, isDarkMode && styles.containerDark]}>
+        <View style={[styles.infoCard, isDarkMode && styles.infoCardDark]}>
           <View style={styles.infoHeader}>
             <FileText size={24} color={colors.primary} />
-            <Text style={styles.infoTitle}>¿Qué es el testamento digital?</Text>
+            <Text style={[styles.infoTitle, isDarkMode && styles.textWhite]}>¿Qué es el testamento digital?</Text>
           </View>
-          <Text style={styles.infoText}>
-            El testamento digital te permite designar a una persona de confianza que tendrá acceso a tu árbol de vida en caso de fallecimiento. Así, tus recuerdos y legado digital no se perderán y podrán ser conservados por tus seres queridos.
+          <Text style={[styles.infoText, isDarkMode && styles.textLight]}>
+            Designa a una persona de confianza que recibirá acceso a tu árbol en el futuro. ALMA se encargará de contactarle en la fecha que elijas.
           </Text>
         </View>
-        
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Designa a tu heredero digital</Text>
-          
+
+        <View style={[styles.section, isDarkMode && styles.sectionDark]}>
+          <Text style={[styles.sectionTitle, isDarkMode && styles.textWhite]}>Heredero Digital</Text>
+
           <View style={styles.inputGroup}>
-            <View style={styles.inputLabel}>
-              <User size={20} color={colors.primary} />
-              <Text style={styles.label}>Nombre completo</Text>
-            </View>
+            <Text style={[styles.label, isDarkMode && styles.textLight]}>Nombre completo</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, isDarkMode && styles.inputDark]}
               value={heirName}
               onChangeText={setHeirName}
-              placeholder="Nombre de tu heredero digital"
+              placeholder="Nombre del heredero"
               placeholderTextColor={colors.gray}
             />
           </View>
-          
+
           <View style={styles.inputGroup}>
-            <View style={styles.inputLabel}>
-              <Mail size={20} color={colors.primary} />
-              <Text style={styles.label}>Correo electrónico</Text>
-            </View>
+            <Text style={[styles.label, isDarkMode && styles.textLight]}>Email de contacto</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, isDarkMode && styles.inputDark]}
               value={heirEmail}
               onChangeText={setHeirEmail}
-              placeholder="Email de contacto"
-              placeholderTextColor={colors.gray}
+              placeholder="email@ejemplo.com"
               keyboardType="email-address"
-            />
-          </View>
-          
-          <View style={styles.inputGroup}>
-            <View style={styles.inputLabel}>
-              <Phone size={20} color={colors.primary} />
-              <Text style={styles.label}>Teléfono (opcional)</Text>
-            </View>
-            <TextInput
-              style={styles.input}
-              value={heirPhone}
-              onChangeText={setHeirPhone}
-              placeholder="Número de teléfono"
               placeholderTextColor={colors.gray}
-              keyboardType="phone-pad"
             />
           </View>
-          
+
           <View style={styles.inputGroup}>
-            <View style={styles.inputLabel}>
-              <Calendar size={20} color={colors.primary} />
-              <Text style={styles.label}>Fecha de activación</Text>
-            </View>
+            <Text style={[styles.label, isDarkMode && styles.textLight]}>Fecha de activación (YYYY-MM-DD)</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, isDarkMode && styles.inputDark]}
               value={activationDate}
               onChangeText={setActivationDate}
-              placeholder="DD/MM/AAAA"
+              placeholder="2050-01-01"
               placeholderTextColor={colors.gray}
             />
-            <Text style={styles.helperText}>
-              Fecha a partir de la cual se activará el testamento si no hay actividad en tu cuenta.
-            </Text>
           </View>
         </View>
-        
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Mensaje personal</Text>
-          <TextInput
-            style={[styles.input, styles.textArea]}
-            value={message}
-            onChangeText={setMessage}
-            placeholder="Escribe un mensaje personal para tu heredero digital..."
-            placeholderTextColor={colors.gray}
-            multiline
-            numberOfLines={4}
-            textAlignVertical="top"
-          />
-        </View>
-        
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>¿Qué quieres compartir?</Text>
-          
+
+        <View style={[styles.section, isDarkMode && styles.sectionDark]}>
+          <Text style={[styles.sectionTitle, isDarkMode && styles.textWhite]}>Tu legado</Text>
+
           <View style={styles.switchItem}>
-            <View>
-              <Text style={styles.switchLabel}>Árbol completo</Text>
-              <Text style={styles.switchDescription}>
-                Incluye todas las ramas y frutos públicos
-              </Text>
-            </View>
+            <Text style={[styles.switchLabel, isDarkMode && styles.textWhite]}>Compartir árbol completo</Text>
             <Switch
               value={shareFullTree}
               onValueChange={setShareFullTree}
-              trackColor={{ false: colors.lightGray, true: colors.primaryLight }}
-              thumbColor={shareFullTree ? colors.primary : colors.gray}
+              trackColor={{ false: colors.lightGray, true: colors.primary }}
             />
           </View>
-          
+
           <View style={styles.switchItem}>
-            <View>
-              <Text style={styles.switchLabel}>Ramas privadas</Text>
-              <Text style={styles.switchDescription}>
-                Incluye ramas y frutos marcados como privados
-              </Text>
-            </View>
+            <Text style={[styles.switchLabel, isDarkMode && styles.textWhite]}>Incluir ramas privadas</Text>
             <Switch
               value={sharePrivateBranches}
               onValueChange={setSharePrivateBranches}
-              trackColor={{ false: colors.lightGray, true: colors.primaryLight }}
-              thumbColor={sharePrivateBranches ? colors.primary : colors.gray}
+              trackColor={{ false: colors.lightGray, true: colors.primary }}
             />
           </View>
-          
-          <View style={styles.switchItem}>
-            <View>
-              <Text style={styles.switchLabel}>Contraseñas guardadas</Text>
-              <Text style={styles.switchDescription}>
-                Incluye contraseñas y datos sensibles
-              </Text>
-            </View>
-            <Switch
-              value={sharePasswords}
-              onValueChange={setSharePasswords}
-              trackColor={{ false: colors.lightGray, true: colors.primaryLight }}
-              thumbColor={sharePasswords ? colors.primary : colors.gray}
-            />
-          </View>
+
+          <Text style={[styles.label, { marginTop: 16 }, isDarkMode && styles.textLight]}>Mensaje de despedida</Text>
+          <TextInput
+            style={[styles.input, styles.textArea, isDarkMode && styles.inputDark]}
+            value={message}
+            onChangeText={setMessage}
+            placeholder="Escribe unas palabras para cuando reciban el acceso..."
+            multiline
+            placeholderTextColor={colors.gray}
+          />
         </View>
-        
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-          <Text style={styles.saveButtonText}>Guardar testamento digital</Text>
+
+        <TouchableOpacity
+          style={[styles.saveButton, saving && styles.disabledButton]}
+          onPress={handleSave}
+          disabled={saving}
+        >
+          {saving ? <ActivityIndicator color="#FFF" /> : (
+            <>
+              <Save size={20} color={colors.white} style={{ marginRight: 8 }} />
+              <Text style={styles.saveButtonText}>Guardar Testamento</Text>
+            </>
+          )}
         </TouchableOpacity>
-        
-        <View style={styles.disclaimer}>
-          <Info size={16} color={colors.textLight} />
-          <Text style={styles.disclaimerText}>
-            Tu testamento digital se activará automáticamente si no hay actividad en tu cuenta durante el período especificado. Puedes modificarlo o cancelarlo en cualquier momento.
-          </Text>
-        </View>
       </ScrollView>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    padding: 16,
-  },
-  infoCard: {
-    backgroundColor: colors.primaryLight,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-  },
-  infoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  infoTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginLeft: 8,
-  },
-  infoText: {
-    fontSize: 14,
-    color: colors.text,
-    lineHeight: 20,
-  },
-  section: {
-    backgroundColor: colors.white,
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 24,
-    shadowColor: colors.text,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 16,
-  },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  inputLabel: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  label: {
-    fontSize: 16,
-    color: colors.text,
-    marginLeft: 8,
-  },
-  input: {
-    backgroundColor: colors.background,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  textArea: {
-    minHeight: 100,
-  },
-  helperText: {
-    fontSize: 12,
-    color: colors.textLight,
-    marginTop: 4,
-  },
-  switchItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.lightGray,
-  },
-  switchLabel: {
-    fontSize: 16,
-    color: colors.text,
-    marginBottom: 2,
-  },
-  switchDescription: {
-    fontSize: 12,
-    color: colors.textLight,
-  },
-  saveButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 8,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  saveButtonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  disclaimer: {
-    flexDirection: 'row',
-    marginBottom: 30,
-    paddingHorizontal: 8,
-  },
-  disclaimerText: {
-    flex: 1,
-    fontSize: 12,
-    color: colors.textLight,
-    marginLeft: 8,
-    lineHeight: 18,
-  },
+  container: { flex: 1, backgroundColor: colors.background, padding: 16 },
+  containerDark: { backgroundColor: '#121212' },
+  center: { justifyContent: 'center', alignItems: 'center' },
+  infoCard: { backgroundColor: colors.primaryLight, padding: 16, borderRadius: 12, marginBottom: 20 },
+  infoCardDark: { backgroundColor: '#1E1E1E', borderWidth: 1, borderColor: '#333' },
+  infoHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  infoTitle: { fontSize: 18, fontWeight: 'bold', color: colors.text, marginLeft: 8 },
+  infoText: { fontSize: 14, color: colors.text, lineHeight: 20 },
+  textWhite: { color: '#FFF' },
+  textLight: { color: '#CCC' },
+  section: { backgroundColor: colors.white, borderRadius: 12, padding: 16, marginBottom: 20, shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
+  sectionDark: { backgroundColor: '#1E1E1E' },
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: colors.text, marginBottom: 16 },
+  inputGroup: { marginBottom: 16 },
+  label: { fontSize: 14, color: colors.textLight, marginBottom: 6, fontWeight: '600' },
+  input: { backgroundColor: colors.background, borderRadius: 8, padding: 12, borderWidth: 1, borderColor: colors.border },
+  inputDark: { backgroundColor: '#2C2C2C', borderColor: '#444', color: '#FFF' },
+  textArea: { minHeight: 100, textAlignVertical: 'top' },
+  switchItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.lightGray },
+  switchLabel: { fontSize: 16, color: colors.text },
+  saveButton: { backgroundColor: colors.primary, borderRadius: 12, padding: 16, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginBottom: 40 },
+  disabledButton: { opacity: 0.7 },
+  saveButtonText: { color: colors.white, fontSize: 16, fontWeight: 'bold' },
 });

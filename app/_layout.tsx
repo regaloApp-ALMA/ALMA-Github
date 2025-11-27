@@ -5,62 +5,54 @@ import * as SplashScreen from "expo-splash-screen";
 import { useEffect } from "react";
 import { Platform, StatusBar } from "react-native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { trpc, trpcClient } from "@/lib/trpc";
 import { useUserStore } from "@/stores/userStore";
 import { useThemeStore } from "@/stores/themeStore";
 import colors from "@/constants/colors";
-
 import { ErrorBoundary } from "./error-boundary";
 
 export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
   initialRouteName: "(tabs)",
 };
 
-// Create a client
+// Cliente para gestionar el caché de datos (muy útil con Supabase)
 const queryClient = new QueryClient();
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     ...FontAwesome.font,
   });
-  const { isAuthenticated } = useUserStore();
+  const { isAuthenticated, initialize } = useUserStore();
   const segments = useSegments();
   const router = useRouter();
   const { theme } = useThemeStore();
 
   useEffect(() => {
-    if (error) {
-      console.error(error);
-      throw error;
-    }
+    if (error) throw error;
   }, [error]);
 
   useEffect(() => {
     if (loaded) {
       SplashScreen.hideAsync();
+      initialize(); // Verificar si hay sesión guardada al arrancar
     }
   }, [loaded]);
 
-  // Check if the user is authenticated
   useEffect(() => {
     if (!loaded) return;
-    
+
     const inAuthGroup = segments[0] === 'auth';
-    
+
     if (!isAuthenticated && !inAuthGroup) {
-      // Redirect to the login page if not authenticated
+      // Si no está logueado y no está en login/registro, mandar a login
       router.replace('/auth/login');
     } else if (isAuthenticated && inAuthGroup) {
-      // Redirect to the home page if authenticated and trying to access auth pages
+      // Si ya está logueado y intenta ir a login, mandar a inicio
       router.replace('/(tabs)');
     }
   }, [isAuthenticated, segments, loaded, router]);
 
-  // Set status bar based on theme
   useEffect(() => {
     if (Platform.OS === 'ios' || Platform.OS === 'android') {
       StatusBar.setBarStyle(theme === 'dark' ? 'light-content' : 'dark-content');
@@ -76,11 +68,10 @@ export default function RootLayout() {
 
   return (
     <ErrorBoundary>
-      <trpc.Provider client={trpcClient} queryClient={queryClient}>
-        <QueryClientProvider client={queryClient}>
-          <RootLayoutNav theme={theme} />
-        </QueryClientProvider>
-      </trpc.Provider>
+      {/* Eliminamos trpc.Provider y dejamos solo QueryClient */}
+      <QueryClientProvider client={queryClient}>
+        <RootLayoutNav theme={theme} />
+      </QueryClientProvider>
     </ErrorBoundary>
   );
 }

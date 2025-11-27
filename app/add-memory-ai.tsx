@@ -1,355 +1,220 @@
-import React, { useState } from 'react';
-import { 
-  View, 
-  Text, 
-  StyleSheet, 
-  TextInput, 
-  TouchableOpacity, 
-  ScrollView, 
-  Alert,
-  ActivityIndicator 
-} from 'react-native';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import { useMemoryStore } from '@/stores/memoryStore';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Image } from 'react-native';
+import { Stack, useRouter } from 'expo-router';
 import { useTreeStore } from '@/stores/treeStore';
 import colors from '@/constants/colors';
 import { useThemeStore } from '@/stores/themeStore';
-import { Mic, Send, Sparkles } from 'lucide-react-native';
+import { Sparkles, Mic, Check, RefreshCw, Image as ImageIcon } from 'lucide-react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { uploadMedia } from '@/lib/storageHelper';
+import { useUserStore } from '@/stores/userStore';
 
 export default function AddMemoryAIScreen() {
-  const { branchId } = useLocalSearchParams<{ branchId?: string }>();
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedMemory, setGeneratedMemory] = useState<{
-    title: string;
-    description: string;
-    branchId?: string;
-    category?: string;
-  } | null>(null);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editedTitle, setEditedTitle] = useState('');
-  const [editedDescription, setEditedDescription] = useState('');
-  
-  const { addMemory } = useMemoryStore();
-  const { tree, addFruit } = useTreeStore();
-  const { theme } = useThemeStore();
-  const router = useRouter();
-  const isDarkMode = theme === 'dark';
+  const [isUploading, setIsUploading] = useState(false);
+  const [generatedMemory, setGeneratedMemory] = useState<{ title: string, description: string, category?: string } | null>(null);
+  const [mediaUrls, setMediaUrls] = useState<string[]>([]);
+  const [selectedBranchId, setSelectedBranchId] = useState<string>('');
 
-  const generateMemoryWithAI = async () => {
+  const { addFruit, tree, fetchMyTree } = useTreeStore();
+  const { user } = useUserStore();
+  const { theme } = useThemeStore();
+  const isDarkMode = theme === 'dark';
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!tree) fetchMyTree();
+  }, [tree]);
+
+  const handleGenerate = async () => {
     if (!prompt.trim()) return;
-    
+
     setIsGenerating(true);
-    
+    setGeneratedMemory(null);
+
     try {
       const response = await fetch('https://toolkit.rork.com/text/llm/', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: [
             {
               role: 'system',
-              content: `Eres un asistente especializado en crear recuerdos significativos para un árbol de vida digital. 
-              
-              Basándote en la descripción del usuario, genera un recuerdo estructurado que incluya:
-              1. Un título emotivo y personal (máximo 50 caracteres)
-              2. Una descripción detallada y emotiva del recuerdo (100-200 palabras)
-              3. Sugiere una categoría apropiada: family, travel, friends, work, pets, hobbies
-              
-              El recuerdo debe ser personal, emotivo y capturar la esencia de lo que el usuario describe. 
-              Usa un tono cálido y cercano, como si fueras un amigo íntimo recordando momentos especiales.
-              
-              Responde SOLO en formato JSON:
-              {
-                "title": "título del recuerdo",
-                "description": "descripción detallada y emotiva",
-                "category": "categoría sugerida"
-              }`
+              content: `Eres un poeta de la memoria para la app ALMA. Genera un JSON con: title (emotivo, corto), description (detallada, primera persona), category (family, travel, work, education, friends, pets, hobbies). Tono íntimo y cálido.`
             },
-            {
-              role: 'user',
-              content: prompt
-            }
+            { role: 'user', content: prompt }
           ]
         })
       });
 
       const data = await response.json();
-      
-      try {
-        // The AI might return markdown-formatted JSON with ```json wrapping
-        let jsonStr = data.completion;
-        
-        // Remove markdown code block formatting if present
-        if (jsonStr.includes('```')) {
-          jsonStr = jsonStr.replace(/```json\s*|```/g, '');
-        }
-        
-        // Parse the cleaned JSON string
-        const memoryData = JSON.parse(jsonStr.trim());
-        
-        // Use provided branchId or find the appropriate branch
-        const suggestedBranch = branchId ? 
-          tree.branches.find(b => b.id === branchId) :
-          tree.branches.find(b => b.categoryId === memoryData.category);
-        
-        const memory = {
-          title: memoryData.title,
-          description: memoryData.description,
-          branchId: suggestedBranch?.id,
-          category: memoryData.category
-        };
-        setGeneratedMemory(memory);
-        setEditedTitle(memory.title);
-        setEditedDescription(memory.description);
-      } catch (parseError) {
-        // Fallback if JSON parsing fails
-        const memory = {
-          title: "Recuerdo Especial",
-          description: data.completion,
-          branchId: branchId,
-          category: "family"
-        };
-        setGeneratedMemory(memory);
-        setEditedTitle(memory.title);
-        setEditedDescription(memory.description);
+      let jsonStr = data.completion;
+      // Limpieza básica de bloques de código si la IA los incluye
+      if (jsonStr.includes('```json')) {
+        jsonStr = jsonStr.split('```json')[1].split('```')[0];
+      } else if (jsonStr.includes('```')) {
+        jsonStr = jsonStr.split('```')[1].split('```')[0];
       }
-      
+
+      const result = JSON.parse(jsonStr.trim());
+      setGeneratedMemory(result);
+
+      // INTELIGENCIA DE RAMA: Pre-seleccionar la mejor opción
+      if (tree && tree.branches.length > 0) {
+        let bestMatch = tree.branches[0].id; // Por defecto la primera
+
+        if (result.category) {
+          // 1. Buscar por ID de categoría exacto
+          const catMatch = tree.branches.find(b => b.categoryId === result.category);
+          if (catMatch) {
+            bestMatch = catMatch.id;
+          } else {
+            // 2. Buscar por nombre (contiene texto)
+            const nameMatch = tree.branches.find(b =>
+              b.name.toLowerCase().includes(result.category!.toLowerCase())
+            );
+            if (nameMatch) bestMatch = nameMatch.id;
+          }
+        }
+        setSelectedBranchId(bestMatch);
+      }
+
     } catch (error) {
-      Alert.alert('Error', 'No se pudo generar el recuerdo. Inténtalo de nuevo.');
-      console.error('Error generating memory:', error);
+      console.error(error);
+      Alert.alert("Error", "La IA necesita un descanso. Inténtalo de nuevo.");
     } finally {
       setIsGenerating(false);
     }
   };
 
-  const saveMemory = () => {
-    if (!generatedMemory) return;
-    
-    const finalTitle = isEditing ? editedTitle : generatedMemory.title;
-    const finalDescription = isEditing ? editedDescription : generatedMemory.description;
-    
-    // Add memory to store
-    addMemory({
-      title: finalTitle,
-      description: finalDescription,
-      date: new Date().toISOString(),
+  const handlePickImage = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      allowsEditing: true,
+      quality: 0.6,
     });
-    
-    // If we have a branch, add as fruit
-    if (generatedMemory.branchId) {
-      addFruit({
-        title: finalTitle,
-        description: finalDescription,
-        branchId: generatedMemory.branchId,
-        isShared: false,
-        position: {
-          x: Math.random() * 0.6 + 0.2,
-          y: Math.random() * 0.6 + 0.2,
-        },
-      });
+
+    if (!result.canceled && user?.id) {
+      setIsUploading(true);
+      try {
+        const url = await uploadMedia(result.assets[0].uri, user.id, 'memories');
+        if (url) setMediaUrls([...mediaUrls, url]);
+      } finally {
+        setIsUploading(false);
+      }
     }
-    
-    Alert.alert(
-      'Recuerdo Guardado',
-      'Tu recuerdo ha sido añadido al árbol de vida.',
-      [
-        {
-          text: 'Ver Árbol',
-          onPress: () => router.replace('/(tabs)/tree'),
-        },
-        {
-          text: 'Crear Otro',
-          onPress: () => {
-            setGeneratedMemory(null);
-            setPrompt('');
-          },
-        }
-      ]
-    );
   };
 
-  const examplePrompts = [
-    "El día que adopté a mi perro Max",
-    "Mi primer viaje a París con mi familia",
-    "La graduación de mi hermana",
-    "Cuando aprendí a tocar la guitarra",
-    "El cumpleaños sorpresa de mi abuela"
-  ];
+  const handleSave = async () => {
+    if (!generatedMemory) return;
+
+    if (!selectedBranchId) {
+      Alert.alert("Falta Rama", "Por favor, selecciona en qué rama quieres guardar este recuerdo.");
+      return;
+    }
+
+    try {
+      await addFruit({
+        title: generatedMemory.title,
+        description: generatedMemory.description,
+        branchId: selectedBranchId, // Usamos la que el usuario ha confirmado/elegido
+        mediaUrls: mediaUrls,
+        isShared: false,
+        position: { x: 0, y: 0 },
+        location: { name: '' }
+      } as any);
+
+      Alert.alert("¡Guardado!", "Tu recuerdo ya brilla en tu árbol.");
+      router.replace('/(tabs)/tree');
+    } catch (error: any) {
+      Alert.alert("Error", error.message);
+    }
+  };
 
   return (
     <>
-      <Stack.Screen 
-        options={{
-          title: branchId ? 'Crear Fruto con IA' : 'Crear Recuerdo con IA',
-          headerStyle: {
-            backgroundColor: isDarkMode ? '#1a1a1a' : colors.primary,
-          },
-          headerTintColor: colors.white,
-        }}
-      />
-      
+      <Stack.Screen options={{ title: 'Creador Mágico', headerStyle: { backgroundColor: isDarkMode ? '#1E1E1E' : colors.secondary }, headerTintColor: '#FFF' }} />
       <ScrollView style={[styles.container, isDarkMode && styles.containerDark]}>
+
+        {/* ESTADO 1: Generación */}
         {!generatedMemory ? (
-          <>
-            <View style={styles.header}>
-              <Sparkles size={32} color={colors.primary} />
-              <Text style={[styles.title, isDarkMode && styles.titleDark]}>
-                Cuéntame tu recuerdo
-              </Text>
-              <Text style={[styles.subtitle, isDarkMode && styles.subtitleDark]}>
-                Describe brevemente el momento que quieres recordar y la IA creará un recuerdo emotivo para tu árbol
-              </Text>
-            </View>
+          <View style={[styles.card, isDarkMode && styles.cardDark]}>
+            <TextInput
+              style={[styles.input, isDarkMode && styles.inputDark]}
+              value={prompt}
+              onChangeText={setPrompt}
+              placeholder="Cuéntame ese momento especial..."
+              placeholderTextColor={colors.gray}
+              multiline
+            />
+            <View style={styles.actions}>
+              <TouchableOpacity style={styles.iconBtn} onPress={handlePickImage}>
+                {isUploading ? <ActivityIndicator size="small" color={colors.secondary} /> : <ImageIcon size={24} color={colors.secondary} />}
+              </TouchableOpacity>
 
-            <View style={styles.inputContainer}>
-              <TextInput
-                style={[styles.input, isDarkMode && styles.inputDark]}
-                value={prompt}
-                onChangeText={setPrompt}
-                placeholder="Ej: El día que conocí a mi mejor amigo en el colegio..."
-                placeholderTextColor={isDarkMode ? '#888' : colors.gray}
-                multiline
-                numberOfLines={4}
-                textAlignVertical="top"
-              />
-              
-              <TouchableOpacity
-                style={[styles.generateButton, !prompt.trim() && styles.generateButtonDisabled]}
-                onPress={generateMemoryWithAI}
-                disabled={!prompt.trim() || isGenerating}
-              >
-                {isGenerating ? (
-                  <ActivityIndicator color={colors.white} />
-                ) : (
-                  <>
-                    <Send size={20} color={colors.white} />
-                    <Text style={styles.generateButtonText}>Generar Recuerdo</Text>
-                  </>
-                )}
+              <TouchableOpacity style={[styles.genButton, isGenerating && styles.disabled]} onPress={handleGenerate} disabled={isGenerating}>
+                {isGenerating ? <ActivityIndicator color="#FFF" /> : <Text style={styles.genText}>Generar ✨</Text>}
               </TouchableOpacity>
             </View>
 
-            <View style={styles.examplesContainer}>
-              <Text style={[styles.examplesTitle, isDarkMode && styles.examplesTitleDark]}>
-                Ejemplos de recuerdos:
-              </Text>
-              {examplePrompts.map((example, index) => (
-                <TouchableOpacity
-                  key={index}
-                  style={[styles.exampleItem, isDarkMode && styles.exampleItemDark]}
-                  onPress={() => setPrompt(example)}
-                >
-                  <Text style={[styles.exampleText, isDarkMode && styles.exampleTextDark]}>
-                    "{example}"
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </>
+            {mediaUrls.length > 0 && (
+              <ScrollView horizontal style={styles.mediaScroll}>
+                {mediaUrls.map((url, i) => (
+                  <Image key={i} source={{ uri: url }} style={styles.miniThumb} />
+                ))}
+              </ScrollView>
+            )}
+          </View>
         ) : (
-          <View style={styles.resultContainer}>
-            <View style={styles.resultHeader}>
-              <Sparkles size={24} color={colors.primary} />
-              <Text style={[styles.resultTitle, isDarkMode && styles.resultTitleDark]}>
-                Recuerdo Generado
-              </Text>
-            </View>
-            
-            <View style={[styles.memoryCard, isDarkMode && styles.memoryCardDark]}>
-              {isEditing ? (
-                <>
-                  <TextInput
-                    style={[styles.editInput, isDarkMode && styles.editInputDark]}
-                    value={editedTitle}
-                    onChangeText={setEditedTitle}
-                    placeholder="Título del recuerdo"
-                    placeholderTextColor={isDarkMode ? '#666' : colors.gray}
-                  />
-                  <TextInput
-                    style={[styles.editTextArea, isDarkMode && styles.editInputDark]}
-                    value={editedDescription}
-                    onChangeText={setEditedDescription}
-                    placeholder="Descripción del recuerdo"
-                    placeholderTextColor={isDarkMode ? '#666' : colors.gray}
-                    multiline
-                    numberOfLines={6}
-                    textAlignVertical="top"
-                  />
-                  <View style={styles.editButtons}>
-                    <TouchableOpacity
-                      style={[styles.editButton, styles.cancelButton]}
-                      onPress={() => {
-                        setIsEditing(false);
-                        setEditedTitle(generatedMemory.title);
-                        setEditedDescription(generatedMemory.description);
-                      }}
-                    >
-                      <Text style={styles.cancelButtonText}>Cancelar</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.editButton, styles.saveEditButton]}
-                      onPress={() => {
-                        if (editedTitle.trim() && editedDescription.trim()) {
-                          setGeneratedMemory({
-                            ...generatedMemory!,
-                            title: editedTitle.trim(),
-                            description: editedDescription.trim()
-                          });
-                          setIsEditing(false);
-                        }
-                      }}
-                    >
-                      <Text style={styles.saveEditButtonText}>Guardar</Text>
-                    </TouchableOpacity>
-                  </View>
-                </>
-              ) : (
-                <>
-                  <View style={styles.memoryHeader}>
-                    <Text style={[styles.memoryTitle, isDarkMode && styles.memoryTitleDark]}>
-                      {generatedMemory.title}
+          // ESTADO 2: Revisión y Guardado
+          <View style={[styles.resultContainer, isDarkMode && styles.cardDark]}>
+            <TextInput style={[styles.resultTitleInput, isDarkMode && styles.textWhite]} value={generatedMemory.title} onChangeText={(t) => setGeneratedMemory({ ...generatedMemory, title: t })} />
+            <TextInput style={[styles.resultBodyInput, isDarkMode && styles.textWhite]} value={generatedMemory.description} onChangeText={(t) => setGeneratedMemory({ ...generatedMemory, description: t })} multiline />
+
+            {/* SELECTOR DE RAMA (NUEVO) */}
+            <View style={styles.branchSelector}>
+              <Text style={[styles.sectionLabel, isDarkMode && styles.textLight]}>GUARDAR EN RAMA:</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.branchScroll}>
+                {tree?.branches.map(branch => (
+                  <TouchableOpacity
+                    key={branch.id}
+                    style={[
+                      styles.branchChip,
+                      selectedBranchId === branch.id && { backgroundColor: branch.color || colors.primary, borderColor: branch.color }
+                    ]}
+                    onPress={() => setSelectedBranchId(branch.id)}
+                  >
+                    <Text style={[
+                      styles.branchChipText,
+                      selectedBranchId === branch.id ? { color: '#FFF', fontWeight: 'bold' } : { color: colors.text }
+                    ]}>
+                      {branch.name}
                     </Text>
-                    <TouchableOpacity
-                      style={styles.editIconButton}
-                      onPress={() => setIsEditing(true)}
-                    >
-                      <Text style={styles.editIcon}>✏️</Text>
-                    </TouchableOpacity>
-                  </View>
-                  <Text style={[styles.memoryDescription, isDarkMode && styles.memoryDescriptionDark]}>
-                    {generatedMemory.description}
-                  </Text>
-                  
-                  {generatedMemory.category && (
-                    <View style={styles.categoryBadge}>
-                      <Text style={styles.categoryText}>
-                        Categoría: {generatedMemory.category}
-                      </Text>
-                    </View>
-                  )}
-                </>
-              )}
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
             </View>
-            
-            <View style={styles.actionButtons}>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.regenerateButton]}
-                onPress={() => {
-                  setGeneratedMemory(null);
-                  generateMemoryWithAI();
-                }}
-              >
-                <Text style={styles.regenerateButtonText}>Regenerar</Text>
+
+            <View style={styles.mediaSection}>
+              <TouchableOpacity style={styles.addMediaBtn} onPress={handlePickImage}>
+                <ImageIcon size={20} color={colors.primary} />
+                <Text style={styles.addMediaText}>Añadir Foto/Video</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.actionButton, styles.saveButton]}
-                onPress={saveMemory}
-              >
-                <Text style={styles.saveButtonText}>Guardar Recuerdo</Text>
+              <ScrollView horizontal style={styles.mediaScroll}>
+                {mediaUrls.map((url, i) => (
+                  <Image key={i} source={{ uri: url }} style={styles.miniThumb} />
+                ))}
+              </ScrollView>
+            </View>
+
+            <View style={styles.resultActions}>
+              <TouchableOpacity style={styles.retryButton} onPress={() => setGeneratedMemory(null)}>
+                <RefreshCw size={20} color={colors.textLight} />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.confirmButton} onPress={handleSave}>
+                <Check size={20} color="#FFF" />
+                <Text style={styles.confirmText}>Guardar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -360,257 +225,37 @@ export default function AddMemoryAIScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-    padding: 16,
-  },
-  containerDark: {
-    backgroundColor: '#121212',
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  titleDark: {
-    color: colors.white,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: colors.textLight,
-    textAlign: 'center',
-    marginTop: 8,
-    lineHeight: 22,
-  },
-  subtitleDark: {
-    color: '#ccc',
-  },
-  inputContainer: {
-    marginBottom: 24,
-  },
-  input: {
-    backgroundColor: colors.white,
-    borderRadius: 12,
-    padding: 16,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    minHeight: 120,
-    marginBottom: 16,
-  },
-  inputDark: {
-    backgroundColor: '#2a2a2a',
-    borderColor: '#444',
-    color: colors.white,
-  },
-  generateButton: {
-    backgroundColor: colors.primary,
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  generateButtonDisabled: {
-    backgroundColor: colors.gray,
-  },
-  generateButtonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  examplesContainer: {
-    marginTop: 16,
-  },
-  examplesTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 12,
-  },
-  examplesTitleDark: {
-    color: colors.white,
-  },
-  exampleItem: {
-    backgroundColor: colors.white,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  exampleItemDark: {
-    backgroundColor: '#2a2a2a',
-    borderColor: '#444',
-  },
-  exampleText: {
-    fontSize: 14,
-    color: colors.textLight,
-    fontStyle: 'italic',
-  },
-  exampleTextDark: {
-    color: '#ccc',
-  },
-  resultContainer: {
-    flex: 1,
-  },
-  resultHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 16,
-    gap: 8,
-  },
-  resultTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text,
-  },
-  resultTitleDark: {
-    color: colors.white,
-  },
-  memoryCard: {
-    backgroundColor: colors.white,
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 24,
-    borderWidth: 1,
-    borderColor: colors.border,
-    elevation: 4,
-    shadowColor: colors.text,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-  },
-  memoryCardDark: {
-    backgroundColor: '#2a2a2a',
-    borderColor: '#444',
-  },
-  memoryTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 12,
-  },
-  memoryTitleDark: {
-    color: colors.white,
-  },
-  memoryDescription: {
-    fontSize: 16,
-    color: colors.textLight,
-    lineHeight: 24,
-    marginBottom: 16,
-  },
-  memoryDescriptionDark: {
-    color: '#ccc',
-  },
-  categoryBadge: {
-    backgroundColor: colors.primary,
-    borderRadius: 20,
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    alignSelf: 'flex-start',
-  },
-  categoryText: {
-    color: colors.white,
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  actionButton: {
-    flex: 1,
-    borderRadius: 12,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  regenerateButton: {
-    backgroundColor: colors.gray,
-  },
-  regenerateButtonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  saveButton: {
-    backgroundColor: colors.primary,
-  },
-  saveButtonText: {
-    color: colors.white,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  memoryHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-  },
-  editIconButton: {
-    padding: 4,
-    marginTop: -4,
-  },
-  editIcon: {
-    fontSize: 16,
-  },
-  editInput: {
-    backgroundColor: colors.white,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginBottom: 12,
-  },
-  editInputDark: {
-    backgroundColor: '#333',
-    borderColor: '#555',
-    color: colors.white,
-  },
-  editTextArea: {
-    backgroundColor: colors.white,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    borderWidth: 1,
-    borderColor: colors.border,
-    minHeight: 120,
-    marginBottom: 12,
-  },
-  editButtons: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  editButton: {
-    flex: 1,
-    borderRadius: 8,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  cancelButton: {
-    backgroundColor: colors.gray,
-  },
-  cancelButtonText: {
-    color: colors.white,
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  saveEditButton: {
-    backgroundColor: colors.primary,
-  },
-  saveEditButtonText: {
-    color: colors.white,
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
+  container: { flex: 1, backgroundColor: '#F0F4F8', padding: 20 },
+  containerDark: { backgroundColor: '#121212' },
+  card: { backgroundColor: '#FFF', borderRadius: 20, padding: 20, marginBottom: 20 },
+  cardDark: { backgroundColor: '#1E1E1E' },
+  input: { fontSize: 18, minHeight: 120, textAlignVertical: 'top', color: '#333' },
+  inputDark: { color: '#FFF' },
+  actions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20 },
+  iconBtn: { padding: 10, backgroundColor: '#F3E5F5', borderRadius: 50 },
+  genButton: { backgroundColor: colors.secondary, paddingVertical: 12, paddingHorizontal: 24, borderRadius: 30 },
+  disabled: { opacity: 0.7 },
+  genText: { color: '#FFF', fontWeight: 'bold' },
+  resultContainer: { backgroundColor: '#FFF', borderRadius: 20, padding: 24, marginTop: 20 },
+  resultTitleInput: { fontSize: 22, fontWeight: 'bold', color: '#333', marginBottom: 10 },
+  resultBodyInput: { fontSize: 16, lineHeight: 24, color: '#444', minHeight: 100 },
+  textWhite: { color: '#FFF' },
+  textLight: { color: '#AAA' },
+
+  // Estilos del selector de ramas
+  branchSelector: { marginTop: 20, marginBottom: 10 },
+  sectionLabel: { fontSize: 12, color: '#888', marginBottom: 8, fontWeight: 'bold' },
+  branchScroll: { flexDirection: 'row' },
+  branchChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#DDD', marginRight: 8, backgroundColor: '#FFF' },
+  branchChipText: { fontSize: 14 },
+
+  mediaSection: { marginTop: 10, marginBottom: 20 },
+  addMediaBtn: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  addMediaText: { color: colors.primary, fontWeight: 'bold', marginLeft: 8 },
+  mediaScroll: { flexDirection: 'row', marginTop: 10 },
+  miniThumb: { width: 60, height: 60, borderRadius: 8, marginRight: 8 },
+  resultActions: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 },
+  retryButton: { padding: 10 },
+  confirmButton: { backgroundColor: colors.primary, flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 24, borderRadius: 30 },
+  confirmText: { color: '#FFF', fontWeight: 'bold', marginLeft: 8 }
 });

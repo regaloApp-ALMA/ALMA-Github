@@ -1,109 +1,96 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { useTreeStore } from '@/stores/treeStore';
 import colors from '@/constants/colors';
-import { MapPin, Users, Heart, Share2, Edit2 } from 'lucide-react-native';
+import { MapPin, Trash2 } from 'lucide-react-native';
+import { useThemeStore } from '@/stores/themeStore';
+import { supabase } from '@/lib/supabase';
 
 export default function FruitDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { tree } = useTreeStore();
+  const { tree, fetchMyTree } = useTreeStore();
+  const { theme } = useThemeStore();
   const router = useRouter();
+  const isDarkMode = theme === 'dark';
+
+  useEffect(() => {
+    if (!tree) fetchMyTree();
+  }, [tree]);
+
+  const handleDelete = () => {
+    Alert.alert(
+      "Borrar Recuerdo",
+      "¿Quieres eliminar este fruto de tu árbol? No podrás recuperarlo.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        {
+          text: "Eliminar",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const { error } = await supabase.from('fruits').delete().eq('id', id);
+              if (error) throw error;
+              await fetchMyTree();
+              router.back();
+            } catch (e: any) {
+              Alert.alert("Error", e.message);
+            }
+          }
+        }
+      ]
+    );
+  };
+
+  if (!tree) return <View style={[styles.center, isDarkMode && styles.bgDark]}><ActivityIndicator /></View>;
 
   const fruit = tree.fruits.find(f => f.id === id);
   const branch = fruit ? tree.branches.find(b => b.id === fruit.branchId) : null;
 
-  if (!fruit || !branch) {
-    return (
-      <View style={styles.container}>
-        <Text>Recuerdo no encontrado</Text>
-      </View>
-    );
-  }
+  if (!fruit || !branch) return <View style={[styles.center, isDarkMode && styles.bgDark]}><Text style={isDarkMode && styles.textWhite}>Recuerdo no encontrado</Text></View>;
 
   return (
     <>
-      <Stack.Screen 
+      <Stack.Screen
         options={{
-          title: fruit.title,
-          headerStyle: {
-            backgroundColor: branch.color,
-          },
+          title: '',
+          headerStyle: { backgroundColor: branch.color },
           headerTintColor: colors.white,
+          headerTransparent: true,
+          headerRight: () => (
+            <TouchableOpacity onPress={handleDelete} style={{ marginRight: 10, marginTop: 10 }}>
+              <View style={styles.iconBg}>
+                <Trash2 size={20} color={colors.error} />
+              </View>
+            </TouchableOpacity>
+          )
         }}
       />
-      
-      <ScrollView style={styles.container}>
-        {fruit.mediaUrls && fruit.mediaUrls.length > 0 && (
-          <Image 
-            source={{ uri: fruit.mediaUrls[0] }} 
-            style={styles.coverImage}
-          />
+      {/* ... Resto del renderizado del fruto igual que antes ... */}
+      <ScrollView style={[styles.container, isDarkMode && styles.containerDark]}>
+        {fruit.mediaUrls && fruit.mediaUrls.length > 0 ? (
+          <Image source={{ uri: fruit.mediaUrls[0] }} style={styles.coverImage} />
+        ) : (
+          <View style={[styles.coverPlaceholder, { backgroundColor: branch.color }]} />
         )}
-        
-        <View style={styles.content}>
-          <View style={styles.header}>
-            <Text style={styles.title}>{fruit.title}</Text>
-            <Text style={styles.date}>
-              {new Date(fruit.createdAt).toLocaleDateString()}
-            </Text>
-            
-            <View style={styles.branchTag}>
-              <View 
-                style={[styles.branchDot, { backgroundColor: branch.color }]} 
-              />
-              <Text style={styles.branchName}>{branch.name}</Text>
+
+        <View style={[styles.content, isDarkMode && styles.contentDark]}>
+          <Text style={[styles.title, isDarkMode && styles.textWhite]}>{fruit.title}</Text>
+          <View style={styles.metaRow}>
+            <Text style={styles.date}>{new Date(fruit.createdAt).toLocaleDateString()}</Text>
+            <View style={[styles.badge, { backgroundColor: branch.color + '20' }]}>
+              <Text style={[styles.badgeText, { color: branch.color }]}>{branch.name}</Text>
             </View>
           </View>
-          
-          <Text style={styles.description}>{fruit.description}</Text>
-          
+
+          <Text style={[styles.description, isDarkMode && styles.textLight]}>{fruit.description}</Text>
+
           {fruit.location && (
             <View style={styles.infoItem}>
-              <MapPin size={20} color={colors.primary} />
-              <Text style={styles.infoText}>{fruit.location.name}</Text>
+              <MapPin size={18} color={colors.textLight} />
+              <Text style={[styles.infoText, isDarkMode && styles.textLight]}>{fruit.location.name}</Text>
             </View>
           )}
-          
-          {fruit.people && fruit.people.length > 0 && (
-            <View style={styles.infoItem}>
-              <Users size={20} color={colors.primary} />
-              <Text style={styles.infoText}>
-                Con {fruit.people.join(', ')}
-              </Text>
-            </View>
-          )}
-          
-          {fruit.emotions && fruit.emotions.length > 0 && (
-            <View style={styles.infoItem}>
-              <Heart size={20} color={colors.primary} />
-              <Text style={styles.infoText}>
-                {fruit.emotions.join(', ')}
-              </Text>
-            </View>
-          )}
-          
-          {fruit.tags && fruit.tags.length > 0 && (
-            <View style={styles.tagsContainer}>
-              {fruit.tags.map((tag, index) => (
-                <View key={index} style={styles.tag}>
-                  <Text style={styles.tagText}>#{tag}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-          
-          <View style={styles.actions}>
-            <TouchableOpacity style={styles.actionButton}>
-              <Share2 size={20} color={colors.primary} />
-              <Text style={styles.actionText}>Compartir</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity style={styles.actionButton}>
-              <Edit2 size={20} color={colors.primary} />
-              <Text style={styles.actionText}>Editar</Text>
-            </TouchableOpacity>
-          </View>
         </View>
       </ScrollView>
     </>
@@ -111,95 +98,23 @@ export default function FruitDetailsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  coverImage: {
-    width: '100%',
-    height: 250,
-  },
-  content: {
-    padding: 20,
-  },
-  header: {
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  date: {
-    fontSize: 14,
-    color: colors.textLight,
-    marginBottom: 8,
-  },
-  branchTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  branchDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 6,
-  },
-  branchName: {
-    fontSize: 14,
-    color: colors.textLight,
-  },
-  description: {
-    fontSize: 16,
-    color: colors.text,
-    lineHeight: 24,
-    marginBottom: 20,
-  },
-  infoItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  infoText: {
-    fontSize: 16,
-    color: colors.text,
-    marginLeft: 10,
-  },
-  tagsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 8,
-    marginBottom: 20,
-  },
-  tag: {
-    backgroundColor: colors.lightGray,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 16,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  tagText: {
-    fontSize: 14,
-    color: colors.textLight,
-  },
-  actions: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    borderTopWidth: 1,
-    borderTopColor: colors.lightGray,
-    paddingTop: 16,
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-  },
-  actionText: {
-    color: colors.primary,
-    marginLeft: 8,
-    fontSize: 16,
-  },
+  container: { flex: 1, backgroundColor: colors.background },
+  containerDark: { backgroundColor: '#000' },
+  bgDark: { backgroundColor: '#121212' },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  coverImage: { width: '100%', height: 300 },
+  coverPlaceholder: { width: '100%', height: 100 },
+  content: { flex: 1, backgroundColor: colors.white, marginTop: -20, borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, minHeight: 500 },
+  contentDark: { backgroundColor: '#121212' },
+  title: { fontSize: 28, fontWeight: 'bold', color: colors.text, marginBottom: 8 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  date: { fontSize: 14, color: colors.textLight, marginRight: 12 },
+  badge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  badgeText: { fontSize: 12, fontWeight: 'bold' },
+  description: { fontSize: 16, lineHeight: 26, color: colors.text, marginBottom: 24 },
+  infoItem: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 },
+  infoText: { fontSize: 15, color: colors.text },
+  textWhite: { color: '#FFF' },
+  textLight: { color: '#CCC' },
+  iconBg: { backgroundColor: 'rgba(255,255,255,0.8)', padding: 8, borderRadius: 20 }
 });

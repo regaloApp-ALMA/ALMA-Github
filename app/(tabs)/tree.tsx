@@ -1,56 +1,32 @@
 import React from 'react';
-import { View, StyleSheet, Text, Dimensions } from 'react-native';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import Tree from '@/components/Tree';
-import colors from '@/constants/colors';
-import { useTreeStore } from '@/stores/treeStore';
+import { Plus, MessageCircle } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import { useThemeStore } from '@/stores/themeStore';
-
-const { height: screenHeight } = Dimensions.get('window');
+import colors from '@/constants/colors';
 
 export default function TreeScreen() {
-  const { tree } = useTreeStore();
   const router = useRouter();
-  const { theme } = useThemeStore();
-  const isDarkMode = theme === 'dark';
-
-  const handleBranchPress = (branch: any) => {
-    router.push({
-      pathname: '/branch-details',
-      params: { id: branch.id },
-    });
-  };
-
-  const handleFruitPress = (fruit: any) => {
-    router.push({
-      pathname: '/fruit-details',
-      params: { id: fruit.id },
-    });
-  };
-
-  const handleRootPress = (root: any) => {
-    router.push({
-      pathname: '/root-details',
-      params: { id: root.id },
-    });
-  };
 
   return (
-    <View style={[styles.container, isDarkMode && styles.containerDark]}>
-      <View style={styles.header}>
-        <Text style={[styles.title, isDarkMode && styles.titleDark]}>{tree.name}</Text>
-        <Text style={[styles.subtitle, isDarkMode && styles.subtitleDark]}>
-          Explora tus recuerdos y conexiones familiares
-        </Text>
-      </View>
-      
-      <View style={styles.treeContainer}>
-        <Tree 
-          onBranchPress={handleBranchPress}
-          onFruitPress={handleFruitPress}
-          onRootPress={handleRootPress}
-        />
-      </View>
+    <View style={styles.container}>
+      <Tree />
+
+      {/* BOTÓN DE AÑADIR FLOTANTE */}
+      <TouchableOpacity
+        style={styles.fab}
+        onPress={() => router.push('/add-branch-options')}
+      >
+        <Plus color="#FFF" size={32} />
+      </TouchableOpacity>
+
+      {/* BOTÓN IA FLOTANTE */}
+      <TouchableOpacity
+        style={styles.aiFab}
+        onPress={() => router.push('/ai-assistant')}
+      >
+        <MessageCircle color="#FFF" size={24} />
+      </TouchableOpacity>
     </View>
   );
 }
@@ -58,40 +34,38 @@ export default function TreeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingTop: 0,
-    backgroundColor: '#FFFFFF',
   },
-  containerDark: {
-    backgroundColor: '#000000',
-  },
-  header: {
-    paddingHorizontal: 20,
-    paddingTop: 0,
-    paddingBottom: 0,
+  fab: {
+    position: 'absolute',
+    bottom: 140, // Encima del panel de raíces
+    alignSelf: 'center',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'transparent',
-    height: 0,
-    overflow: 'hidden',
-    display: 'none',
+    elevation: 10,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    borderWidth: 4,
+    borderColor: '#FFF',
   },
-  title: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: colors.text,
-    marginBottom: 4,
-  },
-  titleDark: {
-    color: colors.white,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: colors.textLight,
-    textAlign: 'center',
-  },
-  subtitleDark: {
-    color: '#AAA',
-  },
-  treeContainer: {
-    flex: 1,
+  aiFab: {
+    position: 'absolute',
+    bottom: 150,
+    right: 20,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#8E44AD',
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 8,
+    shadowColor: '#8E44AD',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
   },
 });

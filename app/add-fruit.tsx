@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Image } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Image, ActivityIndicator, Alert } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useTreeStore } from '@/stores/treeStore';
 import colors from '@/constants/colors';
@@ -7,51 +7,80 @@ import { Image as ImageIcon, MapPin, Users, Heart, Tag } from 'lucide-react-nati
 
 export default function AddFruitScreen() {
   const { branchId } = useLocalSearchParams<{ branchId?: string }>();
-  const { tree, addFruit } = useTreeStore();
+  const { tree, addFruit, fetchMyTree } = useTreeStore();
   const router = useRouter();
-  
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [selectedBranchId, setSelectedBranchId] = useState(branchId || tree.branches[0]?.id);
+  // Inicializamos vacío, lo actualizaremos cuando cargue el árbol
+  const [selectedBranchId, setSelectedBranchId] = useState(branchId || '');
   const [location, setLocation] = useState('');
   const [people, setPeople] = useState('');
   const [emotions, setEmotions] = useState('');
   const [tags, setTags] = useState('');
   const [mediaUrl, setMediaUrl] = useState('https://images.unsplash.com/photo-1464349095431-e9a21285b5f3?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80');
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleCreate = () => {
-    if (!title.trim() || !selectedBranchId) return;
-    
-    const branch = tree.branches.find(b => b.id === selectedBranchId);
-    if (!branch) return;
-    
-    addFruit({
-      title: title.trim(),
-      description: description.trim(),
-      branchId: selectedBranchId,
-      mediaUrls: mediaUrl ? [mediaUrl] : undefined,
-      tags: tags.split(',').map(tag => tag.trim()).filter(tag => tag),
-      location: location ? { name: location } : undefined,
-      people: people.split(',').map(person => person.trim()).filter(person => person),
-      emotions: emotions.split(',').map(emotion => emotion.trim()).filter(emotion => emotion),
-      isShared: false,
-      position: {
-        x: Math.random() * 0.6 + 0.2,
-        y: Math.random() * 0.6 + 0.2,
-      },
-    });
-    
-    router.replace('/(tabs)/tree');
+  // Asegurarnos de que tenemos datos del árbol al entrar
+  useEffect(() => {
+    if (!tree) {
+      fetchMyTree();
+    } else if (!selectedBranchId && tree.branches.length > 0) {
+      // Si no hay rama seleccionada, pre-seleccionar la primera
+      setSelectedBranchId(tree.branches[0].id);
+    }
+  }, [tree, selectedBranchId]);
+
+  const handleCreate = async () => {
+    if (!title.trim() || !selectedBranchId) {
+      Alert.alert("Faltan datos", "Por favor añade un título y selecciona una rama.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await addFruit({
+        title: title.trim(),
+        description: description.trim(),
+        branchId: selectedBranchId,
+        mediaUrls: mediaUrl ? [mediaUrl] : undefined,
+        tags: tags.split(',').map(tag => tag.trim()).filter(tag => tag),
+        location: location ? { name: location } : undefined,
+        people: people.split(',').map(person => person.trim()).filter(person => person),
+        emotions: emotions.split(',').map(emotion => emotion.trim()).filter(emotion => emotion),
+        isShared: false,
+        position: {
+          x: Math.random() * 0.6 + 0.2,
+          y: Math.random() * 0.6 + 0.2,
+        },
+      });
+
+      // Volver al árbol
+      router.dismissTo('/(tabs)/tree');
+    } catch (error) {
+      Alert.alert("Error", "No se pudo guardar el recuerdo. Inténtalo de nuevo.");
+      console.error(error);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleAddImage = () => {
-    // In a real app, this would open the image picker
+    // En una app real, abriría la galería
     setMediaUrl('https://images.unsplash.com/photo-1464349095431-e9a21285b5f3?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80');
   };
 
+  if (!tree) {
+    return (
+      <View style={[styles.container, styles.center]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
   return (
     <>
-      <Stack.Screen 
+      <Stack.Screen
         options={{
           title: 'Nuevo Recuerdo',
           headerStyle: {
@@ -60,7 +89,7 @@ export default function AddFruitScreen() {
           headerTintColor: colors.white,
         }}
       />
-      
+
       <ScrollView style={styles.container}>
         <View style={styles.formGroup}>
           <Text style={styles.label}>Título</Text>
@@ -72,7 +101,7 @@ export default function AddFruitScreen() {
             placeholderTextColor={colors.gray}
           />
         </View>
-        
+
         <View style={styles.formGroup}>
           <Text style={styles.label}>Descripción</Text>
           <TextInput
@@ -86,35 +115,39 @@ export default function AddFruitScreen() {
             textAlignVertical="top"
           />
         </View>
-        
+
         <View style={styles.formGroup}>
           <Text style={styles.label}>Rama</Text>
           <View style={styles.branchesContainer}>
-            {tree.branches.map(branch => (
-              <TouchableOpacity
-                key={branch.id}
-                style={[
-                  styles.branchItem,
-                  selectedBranchId === branch.id && {
-                    backgroundColor: branch.color,
-                    borderColor: branch.color,
-                  },
-                ]}
-                onPress={() => setSelectedBranchId(branch.id)}
-              >
-                <Text
+            {tree.branches.length === 0 ? (
+              <Text style={styles.noBranchesText}>Primero debes crear una rama en tu árbol.</Text>
+            ) : (
+              tree.branches.map(branch => (
+                <TouchableOpacity
+                  key={branch.id}
                   style={[
-                    styles.branchText,
-                    selectedBranchId === branch.id && { color: colors.white },
+                    styles.branchItem,
+                    selectedBranchId === branch.id && {
+                      backgroundColor: branch.color || colors.primary,
+                      borderColor: branch.color || colors.primary,
+                    },
                   ]}
+                  onPress={() => setSelectedBranchId(branch.id)}
                 >
-                  {branch.name}
-                </Text>
-              </TouchableOpacity>
-            ))}
+                  <Text
+                    style={[
+                      styles.branchText,
+                      selectedBranchId === branch.id && { color: colors.white, fontWeight: 'bold' },
+                    ]}
+                  >
+                    {branch.name}
+                  </Text>
+                </TouchableOpacity>
+              ))
+            )}
           </View>
         </View>
-        
+
         <View style={styles.formGroup}>
           <View style={styles.labelRow}>
             <Text style={styles.label}>Imagen</Text>
@@ -123,12 +156,13 @@ export default function AddFruitScreen() {
               <Text style={styles.addButtonText}>Añadir</Text>
             </TouchableOpacity>
           </View>
-          
+
           {mediaUrl && (
             <Image source={{ uri: mediaUrl }} style={styles.previewImage} />
           )}
         </View>
-        
+
+        {/* Campos adicionales opcionales */}
         <View style={styles.formGroup}>
           <View style={styles.labelRow}>
             <Text style={styles.label}>Ubicación</Text>
@@ -142,55 +176,17 @@ export default function AddFruitScreen() {
             placeholderTextColor={colors.gray}
           />
         </View>
-        
-        <View style={styles.formGroup}>
-          <View style={styles.labelRow}>
-            <Text style={styles.label}>Personas</Text>
-            <Users size={16} color={colors.primary} />
-          </View>
-          <TextInput
-            style={styles.input}
-            value={people}
-            onChangeText={setPeople}
-            placeholder="Ej: Mamá, Papá, Laura... (separados por comas)"
-            placeholderTextColor={colors.gray}
-          />
-        </View>
-        
-        <View style={styles.formGroup}>
-          <View style={styles.labelRow}>
-            <Text style={styles.label}>Emociones</Text>
-            <Heart size={16} color={colors.primary} />
-          </View>
-          <TextInput
-            style={styles.input}
-            value={emotions}
-            onChangeText={setEmotions}
-            placeholder="Ej: felicidad, nostalgia... (separadas por comas)"
-            placeholderTextColor={colors.gray}
-          />
-        </View>
-        
-        <View style={styles.formGroup}>
-          <View style={styles.labelRow}>
-            <Text style={styles.label}>Etiquetas</Text>
-            <Tag size={16} color={colors.primary} />
-          </View>
-          <TextInput
-            style={styles.input}
-            value={tags}
-            onChangeText={setTags}
-            placeholder="Ej: viaje, verano... (separadas por comas)"
-            placeholderTextColor={colors.gray}
-          />
-        </View>
-        
+
         <TouchableOpacity
-          style={[styles.createButton, !title.trim() && styles.createButtonDisabled]}
+          style={[styles.createButton, (!title.trim() || isSaving) && styles.createButtonDisabled]}
           onPress={handleCreate}
-          disabled={!title.trim()}
+          disabled={!title.trim() || isSaving}
         >
-          <Text style={styles.createButtonText}>Guardar Recuerdo</Text>
+          {isSaving ? (
+            <ActivityIndicator color="#FFF" />
+          ) : (
+            <Text style={styles.createButtonText}>Guardar Recuerdo</Text>
+          )}
         </TouchableOpacity>
       </ScrollView>
     </>
@@ -202,6 +198,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
     padding: 16,
+  },
+  center: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   formGroup: {
     marginBottom: 20,
@@ -232,6 +232,7 @@ const styles = StyleSheet.create({
   branchesContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    gap: 8,
   },
   branchItem: {
     borderWidth: 1,
@@ -239,12 +240,15 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingVertical: 8,
     paddingHorizontal: 16,
-    marginRight: 8,
-    marginBottom: 8,
+    backgroundColor: colors.white,
   },
   branchText: {
     fontSize: 14,
     color: colors.text,
+  },
+  noBranchesText: {
+    color: colors.gray,
+    fontStyle: 'italic',
   },
   addButton: {
     flexDirection: 'row',

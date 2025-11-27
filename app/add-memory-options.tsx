@@ -21,7 +21,7 @@ export default function AddMemoryOptionsScreen() {
 
   return (
     <>
-      <Stack.Screen 
+      <Stack.Screen
         options={{
           title: 'Añadir Fruto',
           headerStyle: {
@@ -30,7 +30,7 @@ export default function AddMemoryOptionsScreen() {
           headerTintColor: colors.white,
         }}
       />
-      
+
       <View style={[styles.container, isDarkMode && styles.containerDark]}>
         <View style={styles.header}>
           <Text style={[styles.title, isDarkMode && styles.titleDark]}>
@@ -42,7 +42,7 @@ export default function AddMemoryOptionsScreen() {
         </View>
 
         <View style={styles.optionsContainer}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.option, styles.aiOption, isDarkMode && styles.optionDark]}
             onPress={handleAIOption}
           >
@@ -57,7 +57,7 @@ export default function AddMemoryOptionsScreen() {
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.option, styles.manualOption, isDarkMode && styles.optionDark]}
             onPress={handleManualOption}
           >

@@ -1,16 +1,21 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, Switch, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Image, Switch, Platform, Alert, ActivityIndicator } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import colors from '@/constants/colors';
 import { Clock, Calendar, Lock, MessageSquare, Image as ImageIcon, Users, Gift } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useThemeStore } from '@/stores/themeStore';
+import { useGiftStore } from '@/stores/giftStore';
+import { useUserStore } from '@/stores/userStore';
 
 export default function TimeCapsuleScreen() {
   const router = useRouter();
   const { theme } = useThemeStore();
+  const { createGift } = useGiftStore();
+  const { user } = useUserStore();
   const isDarkMode = theme === 'dark';
-  
+
+  // --- ESTADOS (Definición de variables) ---
   const [title, setTitle] = useState('');
   const [message, setMessage] = useState('');
   const [unlockDate, setUnlockDate] = useState(new Date());
@@ -20,6 +25,9 @@ export default function TimeCapsuleScreen() {
   const [mediaUrl, setMediaUrl] = useState('');
   const [isPrivate, setIsPrivate] = useState(false);
   const [notifyRecipients, setNotifyRecipients] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // --- LÓGICA ---
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
     const currentDate = selectedDate || unlockDate;
@@ -32,24 +40,61 @@ export default function TimeCapsuleScreen() {
   };
 
   const handleAddMedia = () => {
-    // In a real app, this would open the image picker
+    // Simulación: en una app real abriría la galería
     setMediaUrl('https://images.unsplash.com/photo-1522165078649-823cf4dbaf46?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80');
     setIncludeMedia(true);
   };
 
-  const handleCreateCapsule = () => {
-    // Here we would save the time capsule
-    // For now, just navigate back
-    router.back();
+  const handleCreateCapsule = async () => {
+    if (!title.trim() || !message.trim()) {
+      Alert.alert('Faltan datos', 'Por favor añade un título y un mensaje para tu cápsula.');
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      // Si el campo destinatarios está vacío, asumimos que es para mí mismo (usando mi email)
+      const targetEmail = recipients.trim() || user?.email || '';
+
+      if (!targetEmail) {
+        throw new Error("No se ha podido determinar el destinatario.");
+      }
+
+      await createGift({
+        type: 'timeCapsule',
+        recipientEmail: targetEmail,
+        message: title, // En la lista de regalos, el título hace de "asunto"
+        content: {
+          title: title,
+          description: message,
+          mediaUrls: mediaUrl ? [mediaUrl] : [],
+          isPrivate: isPrivate
+        },
+        unlockDate: unlockDate.toISOString()
+      });
+
+      Alert.alert(
+        'Cápsula Sellada',
+        `Se ha guardado correctamente y se abrirá el ${unlockDate.toLocaleDateString()}.`,
+        [{ text: 'OK', onPress: () => router.back() }]
+      );
+
+    } catch (error: any) {
+      console.error(error);
+      Alert.alert('Error', 'No se pudo crear la cápsula. ' + (error.message || ''));
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  // Calculate minimum date (today + 1 day)
+  // Calcular fecha mínima (mañana)
   const minDate = new Date();
   minDate.setDate(minDate.getDate() + 1);
 
   return (
     <>
-      <Stack.Screen 
+      <Stack.Screen
         options={{
           title: 'Cápsula del Tiempo',
           headerStyle: {
@@ -58,7 +103,7 @@ export default function TimeCapsuleScreen() {
           headerTintColor: colors.white,
         }}
       />
-      
+
       <ScrollView style={[styles.container, isDarkMode && styles.containerDark]}>
         <View style={styles.header}>
           <Clock size={32} color={colors.warning} />
@@ -67,10 +112,10 @@ export default function TimeCapsuleScreen() {
             Guarda recuerdos que se revelarán en una fecha futura específica
           </Text>
         </View>
-        
+
         <View style={[styles.formSection, isDarkMode && styles.formSectionDark]}>
           <Text style={[styles.sectionTitle, isDarkMode && styles.sectionTitleDark]}>Detalles de la cápsula</Text>
-          
+
           <View style={styles.inputGroup}>
             <Text style={[styles.label, isDarkMode && styles.labelDark]}>Título</Text>
             <TextInput
@@ -81,7 +126,7 @@ export default function TimeCapsuleScreen() {
               placeholderTextColor={isDarkMode ? '#777' : colors.gray}
             />
           </View>
-          
+
           <View style={styles.inputGroup}>
             <Text style={[styles.label, isDarkMode && styles.labelDark]}>Mensaje</Text>
             <TextInput
@@ -95,11 +140,11 @@ export default function TimeCapsuleScreen() {
               textAlignVertical="top"
             />
           </View>
-          
+
           <View style={styles.inputGroup}>
             <Text style={[styles.label, isDarkMode && styles.labelDark]}>Fecha de apertura</Text>
-            <TouchableOpacity 
-              style={[styles.datePickerButton, isDarkMode && styles.datePickerButtonDark]} 
+            <TouchableOpacity
+              style={[styles.datePickerButton, isDarkMode && styles.datePickerButtonDark]}
               onPress={showDatepicker}
             >
               <Calendar size={20} color={isDarkMode ? colors.white : colors.text} />
@@ -107,7 +152,7 @@ export default function TimeCapsuleScreen() {
                 {unlockDate.toLocaleDateString()}
               </Text>
             </TouchableOpacity>
-            
+
             {showDatePicker && (
               <DateTimePicker
                 value={unlockDate}
@@ -118,16 +163,16 @@ export default function TimeCapsuleScreen() {
                 themeVariant={isDarkMode ? 'dark' : 'light'}
               />
             )}
-            
+
             <Text style={[styles.helperText, isDarkMode && styles.helperTextDark]}>
               La cápsula se abrirá automáticamente en esta fecha
             </Text>
           </View>
         </View>
-        
+
         <View style={[styles.formSection, isDarkMode && styles.formSectionDark]}>
           <Text style={[styles.sectionTitle, isDarkMode && styles.sectionTitleDark]}>Contenido multimedia</Text>
-          
+
           <View style={styles.switchRow}>
             <Text style={[styles.switchLabel, isDarkMode && styles.switchLabelDark]}>Incluir imagen o video</Text>
             <Switch
@@ -137,7 +182,7 @@ export default function TimeCapsuleScreen() {
               thumbColor={includeMedia ? colors.warning : isDarkMode ? '#555' : '#f4f3f4'}
             />
           </View>
-          
+
           {includeMedia && (
             <View style={styles.mediaSection}>
               {mediaUrl ? (
@@ -151,10 +196,10 @@ export default function TimeCapsuleScreen() {
             </View>
           )}
         </View>
-        
+
         <View style={[styles.formSection, isDarkMode && styles.formSectionDark]}>
           <Text style={[styles.sectionTitle, isDarkMode && styles.sectionTitleDark]}>Destinatarios</Text>
-          
+
           <View style={styles.inputGroup}>
             <Text style={[styles.label, isDarkMode && styles.labelDark]}>Compartir con (opcional)</Text>
             <TextInput
@@ -168,7 +213,7 @@ export default function TimeCapsuleScreen() {
               Deja en blanco para mantenerlo solo para ti
             </Text>
           </View>
-          
+
           <View style={styles.switchRow}>
             <View>
               <Text style={[styles.switchLabel, isDarkMode && styles.switchLabelDark]}>Notificar a destinatarios</Text>
@@ -183,7 +228,7 @@ export default function TimeCapsuleScreen() {
               thumbColor={notifyRecipients ? colors.warning : isDarkMode ? '#555' : '#f4f3f4'}
             />
           </View>
-          
+
           <View style={styles.switchRow}>
             <View>
               <Text style={[styles.switchLabel, isDarkMode && styles.switchLabelDark]}>Cápsula privada</Text>
@@ -199,10 +244,10 @@ export default function TimeCapsuleScreen() {
             />
           </View>
         </View>
-        
+
         <View style={styles.capsuleTypes}>
           <Text style={[styles.capsuleTypesTitle, isDarkMode && styles.capsuleTypesTitleDark]}>Tipos de cápsulas</Text>
-          
+
           <TouchableOpacity style={[styles.capsuleTypeCard, isDarkMode && styles.capsuleTypeCardDark]}>
             <View style={[styles.capsuleTypeIcon, { backgroundColor: colors.warning + '30' }]}>
               <MessageSquare size={24} color={colors.warning} />
@@ -214,7 +259,7 @@ export default function TimeCapsuleScreen() {
               </Text>
             </View>
           </TouchableOpacity>
-          
+
           <TouchableOpacity style={[styles.capsuleTypeCard, isDarkMode && styles.capsuleTypeCardDark]}>
             <View style={[styles.capsuleTypeIcon, { backgroundColor: colors.primary + '30' }]}>
               <Gift size={24} color={colors.primary} />
@@ -226,41 +271,21 @@ export default function TimeCapsuleScreen() {
               </Text>
             </View>
           </TouchableOpacity>
-          
-          <TouchableOpacity style={[styles.capsuleTypeCard, isDarkMode && styles.capsuleTypeCardDark]}>
-            <View style={[styles.capsuleTypeIcon, { backgroundColor: colors.secondary + '30' }]}>
-              <Users size={24} color={colors.secondary} />
-            </View>
-            <View style={styles.capsuleTypeContent}>
-              <Text style={[styles.capsuleTypeName, isDarkMode && styles.capsuleTypeNameDark]}>Grupal</Text>
-              <Text style={[styles.capsuleTypeDescription, isDarkMode && styles.capsuleTypeDescriptionDark]}>
-                Crea una cápsula colaborativa con amigos o familia
-              </Text>
-            </View>
-          </TouchableOpacity>
-          
-          <TouchableOpacity style={[styles.capsuleTypeCard, isDarkMode && styles.capsuleTypeCardDark]}>
-            <View style={[styles.capsuleTypeIcon, { backgroundColor: colors.error + '30' }]}>
-              <Lock size={24} color={colors.error} />
-            </View>
-            <View style={styles.capsuleTypeContent}>
-              <Text style={[styles.capsuleTypeName, isDarkMode && styles.capsuleTypeNameDark]}>Legado</Text>
-              <Text style={[styles.capsuleTypeDescription, isDarkMode && styles.capsuleTypeDescriptionDark]}>
-                Mensaje que se entregará a tus seres queridos en caso de fallecimiento
-              </Text>
-            </View>
-          </TouchableOpacity>
         </View>
-        
-        <TouchableOpacity 
+
+        <TouchableOpacity
           style={[
-            styles.createButton, 
-            (!title || !message) && styles.createButtonDisabled
-          ]} 
+            styles.createButton,
+            (!title || !message || isSaving) && styles.createButtonDisabled
+          ]}
           onPress={handleCreateCapsule}
-          disabled={!title || !message}
+          disabled={!title || !message || isSaving}
         >
-          <Text style={styles.createButtonText}>Crear cápsula del tiempo</Text>
+          {isSaving ? (
+            <ActivityIndicator color="#FFF" />
+          ) : (
+            <Text style={styles.createButtonText}>Crear cápsula del tiempo</Text>
+          )}
         </TouchableOpacity>
       </ScrollView>
     </>
