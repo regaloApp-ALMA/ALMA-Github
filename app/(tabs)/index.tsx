@@ -1,142 +1,328 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useMemoryStore } from '@/stores/memoryStore';
 import { useUserStore } from '@/stores/userStore';
 import ActivityItem from '@/components/ActivityItem';
 import colors from '@/constants/colors';
 import { useRouter } from 'expo-router';
-import { Heart, Users, Gift, Trees, Upload, Flame } from 'lucide-react-native'; // He cambiado el icono a Upload para "Subir"
+import { Heart, Users, Gift, Trees, Upload, Flame, Calendar, Lightbulb, RefreshCw, Sparkles, Plus } from 'lucide-react-native';
 import { useThemeStore } from '@/stores/themeStore';
+import StreakModal from '@/components/StreakModal';
+
+// --- BANCO DE IDEAS (Frontend estático para inspiración) ---
+const MEMORY_PROMPTS = [
+  { id: 1, category: 'Mascotas', text: '¿Cómo llegó tu primera mascota a casa?', icon: 'paw' },
+  { id: 2, category: 'Viajes', text: 'Ese viaje donde todo salió mal pero te reíste mucho.', icon: 'map' },
+  { id: 3, category: 'Infancia', text: '¿Cuál era tu juguete favorito de niño?', icon: 'gamepad' },
+  { id: 4, category: 'Cocina', text: 'La receta secreta de la abuela que no quieres olvidar.', icon: 'utensils' },
+  { id: 5, category: 'Amistad', text: 'El día que conociste a tu mejor amigo/a.', icon: 'users' },
+  { id: 6, category: 'Logros', text: 'El día que recibiste tu primer sueldo.', icon: 'briefcase' },
+  { id: 7, category: 'Amor', text: 'Tu primera cita con tu pareja actual.', icon: 'heart' },
+  { id: 8, category: 'Música', text: 'El primer concierto al que fuiste.', icon: 'music' },
+];
 
 export default function HomeScreen() {
-  const { recentActivities, fetchHomeData } = useMemoryStore();
+  const { recentActivities, todayMemories, fetchHomeData, isLoading } = useMemoryStore();
   const { user } = useUserStore();
   const router = useRouter();
   const { theme } = useThemeStore();
   const isDarkMode = theme === 'dark';
 
+  const [showStreak, setShowStreak] = useState(false);
+  const [currentIdeas, setCurrentIdeas] = useState<typeof MEMORY_PROMPTS>([]);
+
   useEffect(() => {
     fetchHomeData();
+    refreshIdeas();
   }, []);
 
+  const refreshIdeas = () => {
+    const shuffled = [...MEMORY_PROMPTS].sort(() => 0.5 - Math.random());
+    setCurrentIdeas(shuffled.slice(0, 2));
+  };
+
+  // Navegación
   const navigateToTree = () => router.push('/tree');
   const navigateToMemory = () => router.push('/add-memory-options');
   const navigateToFamily = () => router.push('/family');
   const navigateToGifts = () => router.push('/gifts');
 
-  // Obtener racha del objeto usuario
   const currentStreak = (user as any)?.current_streak || 0;
 
   return (
-    <ScrollView
-      style={[styles.container, isDarkMode && styles.containerDark]}
-      showsVerticalScrollIndicator={false}
-    >
-      <View style={styles.header}>
-        <View style={styles.headerTopRow}>
-          <View>
-            <Text style={[styles.greeting, isDarkMode && styles.greetingDark]}>
-              Hola, {user?.name?.split(' ')[0] || 'Viajero'}
-            </Text>
-            <Text style={[styles.subGreeting, isDarkMode && styles.subGreetingDark]}>
-              Tu historia sigue creciendo.
-            </Text>
-          </View>
+    <>
+      <ScrollView
+        style={[styles.container, isDarkMode && styles.containerDark]}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 100 }}
+      >
+        {/* HEADER */}
+        <View style={styles.header}>
+          <View style={styles.headerTopRow}>
+            <View>
+              <Text style={[styles.greeting, isDarkMode && styles.greetingDark]}>
+                Hola, {user?.name?.split(' ')[0] || 'Viajero'}
+              </Text>
+              <Text style={[styles.subGreeting, isDarkMode && styles.subGreetingDark]}>
+                Tu historia sigue creciendo.
+              </Text>
+            </View>
 
-          {/* RACHA */}
-          <View style={[styles.streakBadge, isDarkMode && styles.streakBadgeDark]}>
-            <Flame size={20} color={colors.warning} fill={currentStreak > 0 ? colors.warning : 'transparent'} />
-            <Text style={[styles.streakText, isDarkMode && styles.textWhite]}>{currentStreak}</Text>
+            <TouchableOpacity
+              style={[styles.streakBadge, isDarkMode && styles.streakBadgeDark]}
+              onPress={() => setShowStreak(true)}
+              activeOpacity={0.7}
+            >
+              <Flame size={20} color={colors.warning} fill={currentStreak > 0 ? colors.warning : 'transparent'} />
+              <Text style={[styles.streakText, isDarkMode && styles.textWhite]}>{currentStreak}</Text>
+            </TouchableOpacity>
           </View>
         </View>
-      </View>
 
-      {/* ACCIONES RÁPIDAS */}
-      <View style={[styles.quickActions, isDarkMode && styles.quickActionsDark]}>
-        <TouchableOpacity style={styles.actionItem} onPress={navigateToTree}>
-          <View style={[styles.actionIcon, isDarkMode && styles.actionIconDark]}>
-            <Trees size={24} color={colors.primary} />
-          </View>
-          <Text style={[styles.actionText, isDarkMode && styles.actionTextDark]}>Mi Árbol</Text>
-        </TouchableOpacity>
+        {/* ACCIONES RÁPIDAS (MANTENIDAS) */}
+        <View style={[styles.quickActions, isDarkMode && styles.quickActionsDark]}>
+          <TouchableOpacity style={styles.actionItem} onPress={navigateToTree}>
+            <View style={[styles.actionIcon, isDarkMode && styles.actionIconDark]}>
+              <Trees size={24} color={colors.primary} />
+            </View>
+            <Text style={[styles.actionText, isDarkMode && styles.actionTextDark]}>Mi Árbol</Text>
+          </TouchableOpacity>
 
-        {/* BOTÓN SUBIR MODIFICADO */}
-        <TouchableOpacity style={styles.actionItem} onPress={navigateToMemory}>
-          <View style={[styles.actionIcon, isDarkMode && styles.actionIconDark]}>
-            <Upload size={24} color={colors.primary} />
-          </View>
-          <Text style={[styles.actionText, isDarkMode && styles.actionTextDark]}>Subir</Text>
-        </TouchableOpacity>
+          <TouchableOpacity style={styles.actionItem} onPress={navigateToMemory}>
+            <View style={[styles.actionIcon, isDarkMode && styles.actionIconDark]}>
+              <Upload size={24} color={colors.primary} />
+            </View>
+            <Text style={[styles.actionText, isDarkMode && styles.actionTextDark]}>Subir</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity style={styles.actionItem} onPress={navigateToFamily}>
-          <View style={[styles.actionIcon, isDarkMode && styles.actionIconDark]}>
-            <Users size={24} color={colors.primary} />
-          </View>
-          <Text style={[styles.actionText, isDarkMode && styles.actionTextDark]}>Familia</Text>
-        </TouchableOpacity>
+          <TouchableOpacity style={styles.actionItem} onPress={navigateToFamily}>
+            <View style={[styles.actionIcon, isDarkMode && styles.actionIconDark]}>
+              <Users size={24} color={colors.primary} />
+            </View>
+            <Text style={[styles.actionText, isDarkMode && styles.actionTextDark]}>Familia</Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity style={styles.actionItem} onPress={navigateToGifts}>
-          <View style={[styles.actionIcon, isDarkMode && styles.actionIconDark]}>
-            <Gift size={24} color={colors.primary} />
-          </View>
-          <Text style={[styles.actionText, isDarkMode && styles.actionTextDark]}>Regalos</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* ACTIVIDAD RECIENTE */}
-      <View style={styles.section}>
-        <View style={styles.sectionHeader}>
-          <Heart size={20} color={colors.primary} />
-          <Text style={[styles.sectionTitle, isDarkMode && styles.sectionTitleDark]}>Actividad Familiar</Text>
+          <TouchableOpacity style={styles.actionItem} onPress={navigateToGifts}>
+            <View style={[styles.actionIcon, isDarkMode && styles.actionIconDark]}>
+              <Gift size={24} color={colors.primary} />
+            </View>
+            <Text style={[styles.actionText, isDarkMode && styles.actionTextDark]}>Regalos</Text>
+          </TouchableOpacity>
         </View>
 
-        {recentActivities.length > 0 ? (
-          recentActivities.map((activity) => (
-            <ActivityItem
-              key={activity.id}
-              userInitial={activity.userInitial}
-              userName={activity.userName}
-              action={activity.action}
-              timeAgo={activity.timeAgo}
-              isDarkMode={isDarkMode}
-            />
-          ))
-        ) : (
-          <View style={styles.emptyState}>
-            <Text style={styles.emptyText}>Todo está tranquilo por aquí.</Text>
-            <Text style={styles.emptySubText}>Añade familiares para ver su actividad.</Text>
+        {/* SECCIÓN 1: RECUERDOS DE HOY (DATOS REALES) */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Calendar size={20} color={colors.primary} />
+            <Text style={[styles.sectionTitle, isDarkMode && styles.sectionTitleDark]}>Recuerdos de hoy</Text>
           </View>
-        )}
-      </View>
-    </ScrollView>
+
+          {isLoading ? (
+            <ActivityIndicator color={colors.primary} style={{ marginTop: 10 }} />
+          ) : todayMemories && todayMemories.length > 0 ? (
+            todayMemories.map((memory) => (
+              <View key={memory.id} style={[styles.card, isDarkMode && styles.cardDark]}>
+                <View style={[styles.cardLeftBorder, { backgroundColor: memory.type === 'birthday' ? colors.warning : colors.primary }]} />
+                <View style={styles.cardContent}>
+                  <Text style={[styles.cardTitle, isDarkMode && styles.textWhite]}>{memory.title}</Text>
+                  <Text style={[styles.cardSubtitle, isDarkMode && styles.textLight]} numberOfLines={2}>
+                    {memory.description}
+                  </Text>
+
+                  <TouchableOpacity
+                    style={[styles.actionButtonSmall, { backgroundColor: memory.type === 'birthday' ? colors.warning : colors.primary }]}
+                    onPress={() => memory.type === 'memory' ? router.push({ pathname: '/fruit-details', params: { id: memory.id } }) : navigateToMemory()}
+                  >
+                    <Text style={styles.actionButtonText}>
+                      {memory.type === 'birthday' ? 'Preparar regalo' : 'Ver recuerdo'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.cardIcon}>
+                  {memory.type === 'birthday' ? (
+                    <Gift size={24} color={colors.warning} />
+                  ) : (
+                    <Calendar size={24} color={colors.primary} />
+                  )}
+                </View>
+              </View>
+            ))
+          ) : (
+            <View style={styles.emptyStateCard}>
+              <Text style={[styles.emptyStateText, isDarkMode && styles.textLight]}>
+                No hay eventos hoy. ¡Es un buen día para crear un nuevo recuerdo!
+              </Text>
+              <TouchableOpacity style={styles.actionButtonSmall} onPress={navigateToMemory}>
+                <Text style={styles.actionButtonText}>Crear ahora</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
+        {/* SECCIÓN 2: INSPIRACIÓN (IDEAS) */}
+        <View style={styles.section}>
+          <View style={[styles.sectionHeader, { justifyContent: 'space-between' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Lightbulb size={20} color={colors.warning} />
+              <Text style={[styles.sectionTitle, isDarkMode && styles.sectionTitleDark]}>Ideas para tu árbol</Text>
+            </View>
+            <TouchableOpacity onPress={refreshIdeas} style={styles.refreshButton}>
+              <RefreshCw size={16} color={colors.textLight} />
+              <Text style={styles.refreshText}>Otras ideas</Text>
+            </TouchableOpacity>
+          </View>
+
+          {currentIdeas.map((idea) => (
+            <TouchableOpacity
+              key={idea.id}
+              style={[styles.ideaCard, isDarkMode && styles.cardDark]}
+              onPress={navigateToMemory}
+            >
+              <View style={[styles.ideaIconCircle, { backgroundColor: '#FFF3E0' }]}>
+                <Sparkles size={20} color={colors.warning} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.ideaCategory, { color: colors.warning }]}>{idea.category.toUpperCase()}</Text>
+                <Text style={[styles.ideaText, isDarkMode && styles.textWhite]}>{idea.text}</Text>
+              </View>
+              <Plus size={20} color={colors.gray} />
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* SECCIÓN 3: ACTIVIDAD FAMILIAR */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Heart size={20} color={colors.primary} />
+            <Text style={[styles.sectionTitle, isDarkMode && styles.sectionTitleDark]}>Actividad Familiar</Text>
+          </View>
+
+          {recentActivities.length > 0 ? (
+            recentActivities.map((activity) => (
+              <ActivityItem
+                key={activity.id}
+                userInitial={activity.userInitial}
+                userName={activity.userName}
+                action={activity.action}
+                timeAgo={activity.timeAgo}
+                isDarkMode={isDarkMode}
+              />
+            ))
+          ) : (
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>Todo está tranquilo por aquí.</Text>
+              <Text style={styles.emptySubText}>Añade familiares para ver su actividad.</Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
+
+      <StreakModal
+        visible={showStreak}
+        onClose={() => setShowStreak(false)}
+        currentStreak={currentStreak}
+      />
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
+  container: { flex: 1, backgroundColor: '#F5F7FA' },
   containerDark: { backgroundColor: '#121212' },
-  header: { padding: 24, paddingTop: 50 },
+
+  header: { padding: 24, paddingTop: 50, backgroundColor: colors.background, paddingBottom: 10 },
   headerTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  greeting: { fontSize: 28, fontWeight: 'bold', color: colors.text, marginBottom: 4 },
+  greeting: { fontSize: 26, fontWeight: 'bold', color: colors.text, marginBottom: 4 },
   greetingDark: { color: colors.white },
-  subGreeting: { fontSize: 16, color: colors.textLight },
+  subGreeting: { fontSize: 15, color: colors.textLight },
   subGreetingDark: { color: '#AAA' },
+
   streakBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, gap: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, elevation: 2 },
   streakBadgeDark: { backgroundColor: '#333' },
   streakText: { fontSize: 16, fontWeight: 'bold', color: colors.text },
-  textWhite: { color: '#FFF' },
-  quickActions: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 30 },
+
+  // ACCIONES RÁPIDAS
+  quickActions: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 30, marginTop: 10 },
   quickActionsDark: {},
   actionItem: { alignItems: 'center', width: 70 },
   actionIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', marginBottom: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
   actionIconDark: { backgroundColor: '#1E1E1E' },
   actionText: { fontSize: 12, color: colors.text, fontWeight: '500' },
   actionTextDark: { color: colors.white },
-  section: { paddingHorizontal: 24 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 16 },
-  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: colors.text, marginLeft: 10 },
+
+  // SECCIONES
+  section: { paddingHorizontal: 20, marginBottom: 25 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 8 },
+  sectionTitle: { fontSize: 18, fontWeight: 'bold', color: colors.text },
   sectionTitleDark: { color: colors.white },
-  emptyState: { padding: 20, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.03)', borderRadius: 12 },
+  textWhite: { color: '#FFF' },
+  textLight: { color: '#AAA' },
+
+  // TARJETAS DE RECUERDOS
+  card: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 5, elevation: 2,
+    overflow: 'hidden',
+    position: 'relative'
+  },
+  cardDark: { backgroundColor: '#1E1E1E' },
+  cardLeftBorder: {
+    position: 'absolute', left: 0, top: 0, bottom: 0, width: 6, backgroundColor: colors.primary
+  },
+  cardContent: { flex: 1, paddingLeft: 12 },
+  cardTitle: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 4 },
+  cardSubtitle: { fontSize: 13, color: '#666', marginBottom: 12 },
+  cardIcon: { justifyContent: 'flex-start', paddingTop: 4 },
+
+  actionButtonSmall: {
+    backgroundColor: colors.primary,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    alignSelf: 'flex-start'
+  },
+  actionButtonText: { color: '#FFF', fontWeight: '600', fontSize: 12 },
+
+  emptyStateCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    borderColor: '#DDD'
+  },
+  emptyStateText: { textAlign: 'center', color: '#666', marginBottom: 12 },
+
+  // TARJETAS DE IDEAS
+  refreshButton: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  refreshText: { color: colors.textLight, fontSize: 12 },
+
+  ideaCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 15,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1
+  },
+  ideaIconCircle: {
+    width: 40, height: 40, borderRadius: 20,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  ideaCategory: { fontSize: 10, fontWeight: 'bold', marginBottom: 2, letterSpacing: 1 },
+  ideaText: { fontSize: 14, color: '#444', fontWeight: '500' },
+
+  // ESTADO VACÍO (ACTIVIDAD)
+  emptyState: { padding: 30, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.02)', borderRadius: 12, borderStyle: 'dashed', borderWidth: 1, borderColor: '#DDD' },
   emptyText: { color: colors.text, fontWeight: '600' },
   emptySubText: { color: colors.textLight, fontSize: 12, marginTop: 4 },
 });

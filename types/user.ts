@@ -2,7 +2,7 @@ export type UserType = {
   id: string;
   name: string;
   email: string;
-  avatar?: string;
+  avatar_url?: string;
   createdAt: string;
   treeId: string;
   connections: string[];

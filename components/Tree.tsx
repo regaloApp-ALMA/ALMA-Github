@@ -1,74 +1,58 @@
 import React, { memo, useMemo } from 'react';
-import { View, StyleSheet, Text, TouchableOpacity, Dimensions, Image, ScrollView, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Text, TouchableOpacity, Dimensions, ScrollView, ActivityIndicator } from 'react-native';
 import { ReactNativeZoomableView } from '@openspacelabs/react-native-zoomable-view';
-import Svg, { Path, Line, Defs, LinearGradient, Stop, Circle } from 'react-native-svg';
+import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { useTreeStore } from '@/stores/treeStore';
-import { useUserStore } from '@/stores/userStore';
-import { BranchType, FruitType, RootType } from '@/types/tree';
+import { BranchType, RootType } from '@/types/tree';
 import { useRouter } from 'expo-router';
 import colors from '@/constants/colors';
+import { Sprout } from 'lucide-react-native';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// LIENZO GRANDE
-const CANVAS_WIDTH = 2000;
-const CANVAS_HEIGHT = 2500;
+// --- CONFIGURACIÓN DEL LIENZO (Tu diseño exacto) ---
+const CANVAS_WIDTH = 1200;
+const CANVAS_HEIGHT = 1800;
 const CENTER_X = CANVAS_WIDTH / 2;
-const TRUNK_BASE_Y = CANVAS_HEIGHT - 300; // Base del árbol
+const BASE_Y = CANVAS_HEIGHT - 200; // Base del tronco
 
-// --- COMPONENTES VISUALES ---
+// Paleta de colores del diseño
+const DESIGN_THEME = {
+    bg: '#F3F0E9',        // Beige suave
+    trunk: '#795548',     // Marrón madera
+    ground: '#E0E0E0',    // Suelo sutil
+    textDark: '#2D3436',
+};
 
-const CenterNode = memo(({ photoUrl, name }: { photoUrl?: string, name: string }) => (
-    <View style={[styles.centerNodeContainer, { left: CENTER_X - 50, top: TRUNK_BASE_Y - 50 }]}>
-        <View style={styles.centerNode}>
-            {photoUrl ? (
-                <Image source={{ uri: photoUrl }} style={styles.centerImage} />
-            ) : (
-                <View style={[styles.centerImage, { backgroundColor: colors.secondary, alignItems: 'center', justifyContent: 'center' }]}>
-                    <Text style={{ color: 'white', fontSize: 22, fontWeight: 'bold' }}>{(name || 'Y').charAt(0).toUpperCase()}</Text>
-                </View>
-            )}
-        </View>
-        <View style={styles.centerLabelBadge}>
-            <Text style={styles.centerLabelText}>RAÍZ</Text>
-        </View>
+// --- COMPONENTES OPTIMIZADOS (Memorizados para rendimiento) ---
+
+// 1. Nodo de Rama (Burbuja)
+const BranchBubble = memo(({ branch, x, y, onPress, fruitCount }: { branch: BranchType; x: number; y: number; onPress: (b: BranchType) => void, fruitCount: number }) => (
+    <View style={{ position: 'absolute', left: x - 45, top: y - 45, width: 90, height: 90, alignItems: 'center', justifyContent: 'center' }}>
+        {/* Badge de contador */}
+        {fruitCount > 0 && (
+            <View style={styles.badge}>
+                <Text style={styles.badgeText}>{fruitCount}</Text>
+            </View>
+        )}
+
+        <TouchableOpacity
+            style={[styles.branchCircle, { backgroundColor: branch.color || colors.primary }]}
+            onPress={() => onPress(branch)}
+            activeOpacity={0.8}
+        >
+            <Text style={styles.branchText} numberOfLines={2} adjustsFontSizeToFit>
+                {branch.name}
+            </Text>
+        </TouchableOpacity>
     </View>
 ));
 
-const BranchNode = memo(({ branch, x, y, onPress }: { branch: BranchType; x: number; y: number; onPress: (b: BranchType) => void }) => (
-    <TouchableOpacity
-        style={[styles.branchNode, { left: x - 45, top: y - 45, backgroundColor: branch.color || colors.primary }]}
-        onPress={() => onPress(branch)}
-        activeOpacity={0.9}
-    >
-        <Text style={styles.branchText} numberOfLines={2}>{branch.name}</Text>
-    </TouchableOpacity>
-));
-
-const FruitNode = memo(({ fruit, x, y, color, onPress }: { fruit: FruitType; x: number; y: number; color: string; onPress: (f: FruitType) => void }) => {
-    const hasImage = fruit.mediaUrls && fruit.mediaUrls.length > 0;
-    return (
-        <TouchableOpacity
-            style={[
-                styles.fruitNode,
-                { left: x - 20, top: y - 20, backgroundColor: hasImage ? '#FFF' : color, borderColor: color }
-            ]}
-            onPress={() => onPress(fruit)}
-            activeOpacity={0.8}
-        >
-            {hasImage ? (
-                <Image source={{ uri: fruit.mediaUrls![0] }} style={styles.fruitImage} />
-            ) : (
-                <View style={styles.fruitDot} />
-            )}
-        </TouchableOpacity>
-    );
-});
-
+// 2. Tarjeta de Raíz
 const RootCard = memo(({ root, onPress }: { root: RootType; onPress: (r: RootType) => void }) => (
     <TouchableOpacity style={styles.rootCard} onPress={() => onPress(root)}>
-        <View style={[styles.rootAvatar, { backgroundColor: colors.family }]}>
-            <Text style={styles.rootInitial}>{root.name.charAt(0).toUpperCase()}</Text>
+        <View style={styles.rootIconContainer}>
+            <Sprout size={18} color="#5D4037" />
         </View>
         <View>
             <Text style={styles.rootName}>{root.name}</Text>
@@ -77,166 +61,136 @@ const RootCard = memo(({ root, onPress }: { root: RootType; onPress: (r: RootTyp
     </TouchableOpacity>
 ));
 
+// --- COMPONENTE PRINCIPAL ---
+
 export default function Tree() {
     const { tree, isLoading } = useTreeStore();
-    const { user } = useUserStore();
     const router = useRouter();
 
-    // Centrar la vista en la base del tronco
-    const initialOffsetX = -(CANVAS_WIDTH - SCREEN_WIDTH) / 2;
-    const initialOffsetY = -(CANVAS_HEIGHT - SCREEN_HEIGHT) + 200;
-
-    const { layoutBranches, layoutFruits, trunkPath, branchPaths } = useMemo(() => {
-        if (!tree) return { layoutBranches: [], layoutFruits: [], trunkPath: '', branchPaths: [] };
+    // Cálculos geométricos (Optimizados con useMemo)
+    const { layoutBranches, trunkPath } = useMemo(() => {
+        if (!tree) return { layoutBranches: [], trunkPath: '' };
 
         const branches = tree.branches || [];
-        const fruits = tree.fruits || [];
 
-        // 1. ESTRUCTURA DE TRONCO Y RAMAS (Jerárquico)
-        const trunkTopY = TRUNK_BASE_Y - 200; // Altura del primer nivel
+        // 1. DIBUJO DEL TRONCO
+        const trunkWidth = 35;
+        const trunkHeight = 900; // Tronco alto como en tu imagen
+        const trunkTopY = BASE_Y - trunkHeight;
 
-        // Tronco Central
-        const trunkPath = `M ${CENTER_X} ${TRUNK_BASE_Y + 50} L ${CENTER_X} ${trunkTopY + 50}`;
+        const trunkPath = `
+            M ${CENTER_X - trunkWidth / 2} ${BASE_Y}
+            L ${CENTER_X - trunkWidth / 2} ${trunkTopY}
+            Q ${CENTER_X} ${trunkTopY - 20} ${CENTER_X + trunkWidth / 2} ${trunkTopY}
+            L ${CENTER_X + trunkWidth / 2} ${BASE_Y}
+            Z
+        `;
 
+        // 2. DIBUJO DE RAMAS
         const layoutBranches = branches.map((branch, i) => {
-            // Alternar Lado: Pares izquierda (-1), Impares derecha (1)
-            const side = i % 2 === 0 ? -1 : 1;
-            const level = Math.floor(i / 2); // Nivel de altura (0, 1, 2...)
+            const isLeft = i % 2 === 0;
+            const sideMultiplier = isLeft ? -1 : 1;
 
-            // Posición
-            // Cuanto más alto, más separado del centro (efecto copa)
-            const spreadX = 160 + (level * 60);
-            const heightStep = 180;
+            // Distribución vertical
+            const verticalSpacing = 140;
+            const startY = BASE_Y - 250 - (i * verticalSpacing);
 
-            const startX = CENTER_X;
-            const startY = trunkTopY - (level * 100); // Nacen del "tronco invisible" central
-
-            const endX = CENTER_X + (spreadX * side);
-            const endY = trunkTopY - (level * heightStep) - 50;
+            // Posición final (Donde va la burbuja)
+            const branchLength = 220;
+            const endX = CENTER_X + (sideMultiplier * branchLength);
+            const endY = startY - 60;
 
             // Curva Bezier
-            const cp1x = CENTER_X + (spreadX * 0.3 * side);
-            const cp1y = endY + 100;
+            const startX = CENTER_X;
+            const cp1x = CENTER_X + (sideMultiplier * 100); // Curva salida
+            const cp1y = startY;
+            const cp2x = endX - (sideMultiplier * 50);      // Curva llegada
+            const cp2y = endY + 20;
 
-            return { ...branch, x: endX, y: endY, startX, startY, cp1x, cp1y };
+            const path = `M ${startX} ${startY} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${endX} ${endY}`;
+
+            // Contamos los frutos en tiempo real desde el store
+            const fruitCount = tree.fruits.filter(f => f.branchId === branch.id).length;
+
+            return { ...branch, x: endX, y: endY, path, fruitCount };
         });
 
-        const branchPaths = layoutBranches.map(b =>
-            `M ${CENTER_X} ${b.startY + 100} Q ${b.cp1x} ${b.cp1y} ${b.x} ${b.y}`
-        );
-
-        // 2. FRUTOS (Orbitando el final de la rama)
-        const layoutFruits = fruits.map((fruit, i) => {
-            const parent = layoutBranches.find(b => b.id === fruit.branchId);
-            if (!parent) return null;
-
-            const fruitsInBranch = fruits.filter(f => f.branchId === parent.id);
-            const myIndex = fruitsInBranch.indexOf(fruit);
-
-            // Abanico superior
-            const spreadAngle = Math.PI / 1.5; // 120 grados
-            const startAngle = -Math.PI / 2 - (spreadAngle / 2);
-            const step = fruitsInBranch.length > 1 ? spreadAngle / (fruitsInBranch.length - 1) : 0;
-            const angle = fruitsInBranch.length === 1 ? -Math.PI / 2 : startAngle + (step * myIndex);
-
-            const dist = 80;
-
-            const x = parent.x + Math.cos(angle) * dist;
-            const y = parent.y + Math.sin(angle) * dist;
-
-            return {
-                ...fruit,
-                x, y,
-                parentX: parent.x,
-                parentY: parent.y,
-                color: parent.color
-            };
-        }).filter(Boolean);
-
-        return { layoutBranches, layoutFruits, trunkPath, branchPaths };
-    }, [tree]);
+        return { layoutBranches, trunkPath };
+    }, [tree]); // Se recalcula automáticamente si el árbol cambia (ej: al borrar)
 
     return (
         <View style={styles.container}>
+            {isLoading && (
+                <View style={styles.loaderContainer}>
+                    <ActivityIndicator size="large" color={colors.primary} />
+                </View>
+            )}
+
             <ReactNativeZoomableView
                 maxZoom={1.5}
-                minZoom={0.3}
+                minZoom={0.4}
                 zoomStep={0.5}
                 initialZoom={0.65}
                 bindToBorders={false}
                 style={styles.zoomView}
                 contentWidth={CANVAS_WIDTH}
                 contentHeight={CANVAS_HEIGHT}
-                initialOffsetX={initialOffsetX}
-                initialOffsetY={initialOffsetY}
+                initialOffsetX={-(CANVAS_WIDTH - SCREEN_WIDTH) / 2}
+                initialOffsetY={-(CANVAS_HEIGHT - SCREEN_HEIGHT) + 250}
             >
                 <View style={styles.canvas}>
                     <Svg width={CANVAS_WIDTH} height={CANVAS_HEIGHT} style={StyleSheet.absoluteFill}>
                         <Defs>
-                            <LinearGradient id="wood" x1="0" y1="0" x2="1" y2="0">
-                                <Stop offset="0" stopColor="#4E342E" />
-                                <Stop offset="1" stopColor="#795548" />
+                            <LinearGradient id="groundGrad" x1="0" y1="0" x2="0" y2="1">
+                                <Stop offset="0" stopColor="#E0E0E0" stopOpacity="0.5" />
+                                <Stop offset="1" stopColor="#F3F0E9" stopOpacity="0" />
                             </LinearGradient>
                         </Defs>
 
-                        {/* Tronco Principal */}
-                        <Path d={trunkPath} stroke="url(#wood)" strokeWidth="24" strokeLinecap="round" />
+                        {/* Suelo */}
+                        <Path
+                            d={`M 0 ${BASE_Y} Q ${CENTER_X} ${BASE_Y - 80} ${CANVAS_WIDTH} ${BASE_Y} V ${CANVAS_HEIGHT} H 0 Z`}
+                            fill="#E8E6DC"
+                        />
 
-                        {/* Ramas */}
-                        {branchPaths.map((d, i) => (
+                        {/* Tronco */}
+                        <Path d={trunkPath} fill={DESIGN_THEME.trunk} />
+
+                        {/* Líneas de Ramas */}
+                        {layoutBranches.map((b) => (
                             <Path
-                                key={`branch-path-${i}`}
-                                d={d}
-                                stroke="#5D4037"
-                                strokeWidth="12"
+                                key={`path-${b.id}`}
+                                d={b.path}
+                                stroke={DESIGN_THEME.trunk}
+                                strokeWidth={12}
                                 strokeLinecap="round"
                                 fill="none"
                             />
                         ))}
-
-                        {/* Tallos de Frutos */}
-                        {layoutFruits.map((f: any, i) => (
-                            <Line
-                                key={`stem-${i}`}
-                                x1={f.parentX} y1={f.parentY}
-                                x2={f.x} y2={f.y}
-                                stroke={f.color}
-                                strokeWidth="3"
-                                opacity={0.5}
-                            />
-                        ))}
                     </Svg>
 
-                    {/* Nodos */}
-                    <CenterNode photoUrl={(user as any)?.avatar_url} name={user?.name || 'Yo'} />
-
+                    {/* Nodos Interactivos (Burbujas) */}
                     {layoutBranches.map((b) => (
-                        <BranchNode
+                        <BranchBubble
                             key={b.id}
                             branch={b}
                             x={b.x}
                             y={b.y}
+                            fruitCount={b.fruitCount}
                             onPress={(branch) => router.push({ pathname: '/branch-details', params: { id: branch.id } })}
-                        />
-                    ))}
-
-                    {layoutFruits.map((f: any) => (
-                        <FruitNode
-                            key={f.id}
-                            fruit={f}
-                            x={f.x}
-                            y={f.y}
-                            color={f.color}
-                            onPress={(fruit) => router.push({ pathname: '/fruit-details', params: { id: fruit.id } })}
                         />
                     ))}
                 </View>
             </ReactNativeZoomableView>
 
-            {/* Panel de Raíces (Limpio) */}
-            <View style={styles.rootsPanel}>
-                <Text style={styles.rootsTitle}>Familiares conectados</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20 }}>
+            {/* PANEL INFERIOR: Raíces Familiares */}
+            <View style={styles.bottomPanel}>
+                <Text style={styles.panelTitle}>Raíces familiares</Text>
+                <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.rootsList}
+                >
                     {tree?.roots && tree.roots.length > 0 ? (
                         tree.roots.map((root) => (
                             <RootCard
@@ -246,55 +200,85 @@ export default function Tree() {
                             />
                         ))
                     ) : (
-                        <View style={styles.emptyRootsContainer}>
-                            <Text style={styles.emptyRoots}>Invita a tu familia.</Text>
-                            <TouchableOpacity onPress={() => router.push('/share-tree')}>
-                                <Text style={styles.inviteLink}>Invitar</Text>
-                            </TouchableOpacity>
+                        <View style={styles.emptyState}>
+                            <Text style={styles.emptyText}>Añade a tus padres para empezar.</Text>
                         </View>
                     )}
+
+                    <TouchableOpacity
+                        style={styles.inviteCard}
+                        onPress={() => router.push('/share-tree')}
+                    >
+                        <Text style={styles.inviteText}>+ Invitar</Text>
+                    </TouchableOpacity>
                 </ScrollView>
             </View>
-
-            {isLoading && (
-                <View style={styles.loadingFloat}>
-                    <ActivityIndicator color={colors.primary} />
-                    <Text style={styles.loadingText}>Cargando...</Text>
-                </View>
-            )}
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#FDFBF7' },
+    container: {
+        flex: 1,
+        backgroundColor: DESIGN_THEME.bg
+    },
     zoomView: { width: '100%', height: '100%' },
     canvas: { width: CANVAS_WIDTH, height: CANVAS_HEIGHT },
+    loaderContainer: {
+        position: 'absolute', top: 100, left: 0, right: 0, zIndex: 100, alignItems: 'center',
+    },
 
-    centerNodeContainer: { position: 'absolute', width: 100, height: 100, alignItems: 'center', justifyContent: 'center', zIndex: 30 },
-    centerNode: { width: 90, height: 90, borderRadius: 45, padding: 4, backgroundColor: '#FFF', elevation: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.2 },
-    centerImage: { width: '100%', height: '100%', borderRadius: 45 },
-    centerLabelBadge: { position: 'absolute', bottom: -5, backgroundColor: '#5D4037', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 10 },
-    centerLabelText: { color: '#FFF', fontSize: 10, fontWeight: 'bold' },
+    // Estilos Burbuja
+    branchCircle: {
+        width: 90, height: 90,
+        borderRadius: 45,
+        justifyContent: 'center', alignItems: 'center',
+        elevation: 5,
+        shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4,
+    },
+    branchText: {
+        color: '#FFF', fontWeight: 'bold', fontSize: 14, textAlign: 'center', paddingHorizontal: 5,
+    },
+    badge: {
+        position: 'absolute', top: 0, right: 0,
+        backgroundColor: '#F5F5F5',
+        width: 28, height: 28, borderRadius: 14,
+        justifyContent: 'center', alignItems: 'center',
+        zIndex: 10, elevation: 6,
+        shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2,
+    },
+    badgeText: { color: '#333', fontWeight: 'bold', fontSize: 12 },
 
-    branchNode: { position: 'absolute', width: 90, height: 90, borderRadius: 45, justifyContent: 'center', alignItems: 'center', borderWidth: 3, borderColor: '#FFF', elevation: 6, shadowColor: '#000', shadowOpacity: 0.15, zIndex: 20 },
-    branchText: { color: '#FFF', fontWeight: 'bold', textAlign: 'center', fontSize: 11, paddingHorizontal: 4, textShadowColor: 'rgba(0,0,0,0.2)', textShadowRadius: 2 },
-
-    fruitNode: { position: 'absolute', width: 40, height: 40, borderRadius: 20, elevation: 4, justifyContent: 'center', alignItems: 'center', zIndex: 25, borderWidth: 2, overflow: 'hidden' },
-    fruitImage: { width: '100%', height: '100%' },
-    fruitDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: 'rgba(255,255,255,0.7)' },
-
-    rootsPanel: { position: 'absolute', bottom: 20, left: 16, right: 16, backgroundColor: 'rgba(255,255,255,0.95)', borderRadius: 20, padding: 16, elevation: 10, shadowColor: '#000', shadowOpacity: 0.08, borderWidth: 1, borderColor: '#F0F0F0' },
-    rootsTitle: { fontSize: 15, fontWeight: 'bold', color: '#2D3436', marginBottom: 10 },
-    rootCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', padding: 8, paddingRight: 14, borderRadius: 30, marginRight: 10, borderWidth: 1, borderColor: '#EEE', elevation: 1 },
-    rootAvatar: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
-    rootInitial: { color: '#FFF', fontWeight: 'bold', fontSize: 12 },
-    rootName: { fontWeight: '600', fontSize: 13, color: '#2D3436' },
-    rootRelation: { fontSize: 10, color: '#636E72' },
-    emptyRootsContainer: { flexDirection: 'row', alignItems: 'center' },
-    emptyRoots: { color: '#999', fontStyle: 'italic', fontSize: 13, marginRight: 8 },
-    inviteLink: { color: colors.primary, fontWeight: 'bold', fontSize: 13 },
-
-    loadingFloat: { position: 'absolute', top: 50, alignSelf: 'center', backgroundColor: 'rgba(255,255,255,0.9)', padding: 10, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 8, elevation: 5 },
-    loadingText: { color: colors.primary, fontWeight: 'bold', fontSize: 14 }
+    // Panel Inferior
+    bottomPanel: {
+        position: 'absolute', bottom: 0, left: 0, right: 0,
+        backgroundColor: '#FFF',
+        borderTopLeftRadius: 24, borderTopRightRadius: 24,
+        paddingVertical: 20, paddingHorizontal: 20,
+        elevation: 15, shadowColor: '#000', shadowOffset: { width: 0, height: -5 }, shadowOpacity: 0.08, shadowRadius: 10,
+        height: 170,
+    },
+    panelTitle: {
+        fontSize: 18, fontWeight: 'bold', color: DESIGN_THEME.textDark, marginBottom: 12
+    },
+    rootsList: { alignItems: 'center', paddingRight: 20 },
+    rootCard: {
+        flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF',
+        padding: 10, paddingRight: 16, borderRadius: 16,
+        marginRight: 12, borderWidth: 1, borderColor: '#F0F0F0',
+        shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 3, elevation: 1,
+    },
+    rootIconContainer: {
+        width: 36, height: 36, borderRadius: 18, backgroundColor: '#EFEBE9',
+        justifyContent: 'center', alignItems: 'center', marginRight: 10,
+    },
+    rootName: { fontWeight: '700', color: '#333', fontSize: 14 },
+    rootRelation: { color: '#888', fontSize: 11 },
+    emptyState: { marginRight: 10 },
+    emptyText: { color: '#AAA', fontStyle: 'italic' },
+    inviteCard: {
+        backgroundColor: '#F0F4C3', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 16,
+        justifyContent: 'center', alignItems: 'center',
+    },
+    inviteText: { color: '#558B2F', fontWeight: 'bold', fontSize: 13 },
 });

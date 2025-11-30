@@ -5,11 +5,10 @@ import { useTreeStore } from '@/stores/treeStore';
 import colors from '@/constants/colors';
 import { MapPin, Trash2 } from 'lucide-react-native';
 import { useThemeStore } from '@/stores/themeStore';
-import { supabase } from '@/lib/supabase';
 
 export default function FruitDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { tree, fetchMyTree } = useTreeStore();
+  const { tree, fetchMyTree, deleteFruit } = useTreeStore();
   const { theme } = useThemeStore();
   const router = useRouter();
   const isDarkMode = theme === 'dark';
@@ -18,24 +17,40 @@ export default function FruitDetailsScreen() {
     if (!tree) fetchMyTree();
   }, [tree]);
 
+  // --- LÓGICA DE DOBLE CONFIRMACIÓN ---
   const handleDelete = () => {
+    // PRIMERA ALERTA
     Alert.alert(
-      "Borrar Recuerdo",
-      "¿Quieres eliminar este fruto de tu árbol? No podrás recuperarlo.",
+      "Eliminar Recuerdo",
+      "¿Estás seguro de que quieres borrar este recuerdo?",
       [
         { text: "Cancelar", style: "cancel" },
         {
-          text: "Eliminar",
+          text: "Sí, eliminar",
           style: "destructive",
-          onPress: async () => {
-            try {
-              const { error } = await supabase.from('fruits').delete().eq('id', id);
-              if (error) throw error;
-              await fetchMyTree();
-              router.back();
-            } catch (e: any) {
-              Alert.alert("Error", e.message);
-            }
+          onPress: () => {
+            // SEGUNDA ALERTA (CONFIRMACIÓN FINAL)
+            setTimeout(() => { // Pequeño delay para que no se solapen en iOS
+              Alert.alert(
+                "¿Estás absolutamente seguro?",
+                "Esta acción no se puede deshacer y perderás este recuerdo para siempre.",
+                [
+                  { text: "No, espera", style: "cancel" },
+                  {
+                    text: "Sí, bórralo definitivamente",
+                    style: "destructive",
+                    onPress: async () => {
+                      try {
+                        await deleteFruit(id);
+                        router.back();
+                      } catch (e: any) {
+                        Alert.alert("Error", e.message);
+                      }
+                    }
+                  }
+                ]
+              );
+            }, 200);
           }
         }
       ]
@@ -66,7 +81,6 @@ export default function FruitDetailsScreen() {
           )
         }}
       />
-      {/* ... Resto del renderizado del fruto igual que antes ... */}
       <ScrollView style={[styles.container, isDarkMode && styles.containerDark]}>
         {fruit.mediaUrls && fruit.mediaUrls.length > 0 ? (
           <Image source={{ uri: fruit.mediaUrls[0] }} style={styles.coverImage} />
