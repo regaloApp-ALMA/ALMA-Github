@@ -3,6 +3,14 @@ import { supabase } from '@/lib/supabase';
 import { TreeType, BranchType, FruitType, RootType } from '@/types/tree';
 import { useUserStore } from './userStore';
 
+type NewBranchPayload = {
+  name: string;
+  categoryId: string;
+  color: string;
+  isShared?: boolean;
+  position?: { x: number; y: number };
+};
+
 interface TreeState {
   tree: TreeType | null;
   isLoading: boolean;
@@ -12,7 +20,7 @@ interface TreeState {
   fetchMyTree: (isRefresh?: boolean) => Promise<void>;
 
   // Funciones de Ramas
-  addBranch: (branch: { name: string; categoryId: string; color: string }) => Promise<void>;
+  addBranch: (branch: NewBranchPayload) => Promise<void>;
   deleteBranch: (branchId: string) => Promise<void>;
 
   // Funciones de Frutos
@@ -139,7 +147,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         name: branch.name,
         category: branch.categoryId,
         color: branch.color,
-        is_shared: false
+        is_shared: branch.isShared ?? false
       });
       if (error) throw error;
       get().fetchMyTree();
