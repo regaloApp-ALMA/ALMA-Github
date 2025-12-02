@@ -5,6 +5,24 @@ import { useUserStore } from './userStore';
 
 type TreePermissionScope = 'all' | 'custom';
 
+const getErrorMessage = (error: unknown): string => {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  if (typeof error === 'object' && error !== null) {
+    const possibleError = error as { message?: string; details?: string; hint?: string };
+    if (possibleError.message) return possibleError.message;
+    if (possibleError.details) return possibleError.details;
+    if (possibleError.hint) return possibleError.hint;
+    try {
+      return JSON.stringify(error);
+    } catch (stringifyError) {
+      console.warn('Error stringifying unknown error', stringifyError);
+    }
+  }
+  return String(error);
+};
+
 type NewBranchPayload = {
   name: string;
   categoryId: string;
@@ -150,8 +168,9 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       const tree = await buildTreeState(treeData);
       set({ tree, isLoading: false, isRefreshing: false });
     } catch (error: any) {
-      console.error('Error fetching tree:', error);
-      set({ error: error.message, isLoading: false, isRefreshing: false });
+      const message = getErrorMessage(error);
+      console.error('Error fetching tree:', message, error);
+      set({ error: message, isLoading: false, isRefreshing: false });
     }
   },
 
@@ -190,8 +209,9 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       const tree = await buildTreeState(treeData, branchFilter as string[] | undefined);
       set({ tree, isLoading: false, isRefreshing: false });
     } catch (error: any) {
-      console.error('Error fetching shared tree:', error);
-      set({ error: error.message, isLoading: false, isRefreshing: false });
+      const message = getErrorMessage(error);
+      console.error('Error fetching shared tree:', message, error);
+      set({ error: message, isLoading: false, isRefreshing: false });
     }
   },
 
@@ -208,8 +228,10 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       });
       if (error) throw error;
       get().fetchMyTree();
-    } catch (e) {
-      console.error(e);
+    } catch (error: any) {
+      const message = getErrorMessage(error);
+      console.error('Error adding branch:', message, error);
+      set({ error: message });
     }
   },
 
@@ -229,7 +251,8 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       const { error } = await supabase.from('branches').delete().eq('id', branchId);
       if (error) throw error;
     } catch (error: any) {
-      console.error('Error deleting branch:', error);
+      const message = getErrorMessage(error);
+      console.error('Error deleting branch:', message, error);
       set({ tree: previousTree, error: 'No se pudo borrar la rama.' });
       get().fetchMyTree();
     }
@@ -247,8 +270,10 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       });
       if (error) throw error;
       get().fetchMyTree();
-    } catch (e) {
-      console.error(e);
+    } catch (error: any) {
+      const message = getErrorMessage(error);
+      console.error('Error adding fruit:', message, error);
+      set({ error: message });
     }
   },
 
@@ -267,7 +292,8 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       const { error } = await supabase.from('fruits').delete().eq('id', fruitId);
       if (error) throw error;
     } catch (error: any) {
-      console.error('Error deleting fruit:', error);
+      const message = getErrorMessage(error);
+      console.error('Error deleting fruit:', message, error);
       set({ tree: previousTree, error: 'No se pudo borrar el recuerdo.' });
       get().fetchMyTree();
     }
