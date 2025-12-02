@@ -1,14 +1,34 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
 
+export type MemoryItem = {
+  id: string;
+  title: string;
+  description: string;
+  date?: string | null;
+  createdAt: string;
+  type?: 'birthday' | 'memory';
+};
+
+export type ActivityItem = {
+  id: string;
+  userId?: string;
+  userName: string;
+  userInitial: string;
+  action: string;
+  timestamp: string;
+  timeAgo: string;
+};
+
 interface MemoryState {
-  todayMemories: any[];
-  recentActivities: any[];
+  todayMemories: MemoryItem[];
+  recentActivities: ActivityItem[];
   isLoading: boolean;
   error: string | null;
 
   fetchHomeData: () => Promise<void>;
-  addMemory: (memory: any) => Promise<void>;
+  addMemory: (memory: MemoryItem) => Promise<void>;
+  addMemoryWithAI: (prompt: string) => Promise<void>;
 }
 
 export const useMemoryStore = create<MemoryState>((set) => ({
@@ -21,101 +41,121 @@ export const useMemoryStore = create<MemoryState>((set) => ({
     set({ isLoading: true, error: null });
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return;
+      if (!session?.user?.id) {
+        console.log('[MemoryStore] No session found. Clearing home data.');
+        set({ todayMemories: [], recentActivities: [], isLoading: false });
+        return;
+      }
 
-      // 1. RECUERDOS DE HOY (Efemérides)
-      // Como SQL es complejo para filtrar "mismo día y mes" en timestamp, 
-      // por simplicidad para el MVP traeremos los últimos 5 recuerdos propios.
-      // (Para hacerlo perfecto necesitaríamos una función SQL "month()" y "day()")
-      const { data: memories } = await supabase
+      console.log('[MemoryStore] Fetching home data for user', session.user.id);
+
+      const { data: memories, error: memoriesError } = await supabase
         .from('fruits')
         .select('id, title, description, date, created_at')
         .order('created_at', { ascending: false })
         .limit(3);
 
-      // 2. ACTIVIDAD RECIENTE (De Familiares)
-      // Buscamos frutos creados por gente que está en mis 'family_connections'
-      // Primero obtenemos los IDs de mis familiares
-      const { data: connections } = await supabase
+      if (memoriesError) throw memoriesError;
+
+      const normalizedMemories: MemoryItem[] = (memories || []).map((memory: any) => ({
+        id: memory.id,
+        title: memory.title,
+        description: memory.description,
+        date: memory.date,
+        createdAt: memory.created_at,
+        type: 'memory',
+      }));
+
+      const { data: connections, error: connectionsError } = await supabase
         .from('family_connections')
         .select('relative_id')
         .eq('user_id', session.user.id);
 
-      const familyIds = connections?.map(c => c.relative_id) || [];
+      if (connectionsError) throw connectionsError;
 
-      let activities: any[] = [];
+      const familyIds = (connections || [])
+        .map((connection: { relative_id: string | null }) => connection.relative_id)
+        .filter((id): id is string => Boolean(id));
+
+      let activities: ActivityItem[] = [];
 
       if (familyIds.length > 0) {
-        // Buscar árboles de esos familiares
-        const { data: familyTrees } = await supabase
+        const { data: familyTrees, error: familyTreesError } = await supabase
           .from('trees')
           .select('id, owner_id')
           .in('owner_id', familyIds);
 
-        const treeIds = familyTrees?.map(t => t.id) || [];
+        if (familyTreesError) throw familyTreesError;
+
+        const treeIds = (familyTrees || []).map((tree: { id: string }) => tree.id);
 
         if (treeIds.length > 0) {
-          // Buscar ramas de esos árboles
-          const { data: familyBranches } = await supabase
+          const { data: familyBranches, error: familyBranchesError } = await supabase
             .from('branches')
             .select('id')
             .in('tree_id', treeIds);
 
-          const branchIds = familyBranches?.map(b => b.id) || [];
+          if (familyBranchesError) throw familyBranchesError;
+
+          const branchIds = (familyBranches || []).map((branch: { id: string }) => branch.id);
 
           if (branchIds.length > 0) {
-            // Buscar frutos en esas ramas
-            const { data: recentFruits } = await supabase
+            const { data: recentFruits, error: recentFruitsError } = await supabase
               .from('fruits')
               .select(`
-                 id, title, created_at,
-                 branch:branches(
-                   tree:trees(
-                     owner:profiles(name)
-                   )
-                 )
-               `)
+                id, title, created_at,
+                branch:branches(
+                  tree:trees(
+                    owner:profiles(id, name)
+                  )
+                )
+              `)
               .in('branch_id', branchIds)
               .order('created_at', { ascending: false })
               .limit(10);
 
-            // Formatear para la UI
-            activities = (recentFruits || []).map((f: any) => ({
-              id: f.id,
-              userId: f.branch?.tree?.owner?.id, // Dato aproximado
-              userName: f.branch?.tree?.owner?.name || 'Familiar',
-              userInitial: (f.branch?.tree?.owner?.name || 'F').charAt(0),
-              action: `añadió el recuerdo "${f.title}"`,
-              timestamp: f.created_at,
-              timeAgo: 'recientemente' // Podríamos usar date-fns aquí
-            }));
+            if (recentFruitsError) throw recentFruitsError;
+
+            activities = (recentFruits || []).map((fruit: any) => {
+              const owner = fruit.branch?.tree?.owner;
+              const userName = owner?.name || 'Familiar';
+
+              return {
+                id: fruit.id,
+                userId: owner?.id,
+                userName,
+                userInitial: userName.charAt(0),
+                action: `añadió el recuerdo "${fruit.title}"`,
+                timestamp: fruit.created_at,
+                timeAgo: 'recientemente',
+              };
+            });
           }
         }
       }
 
-      set({
-        todayMemories: memories || [],
-        recentActivities: activities,
-        isLoading: false
+      console.log('[MemoryStore] Home data ready', {
+        memories: normalizedMemories.length,
+        activities: activities.length,
       });
 
+      set({
+        todayMemories: normalizedMemories,
+        recentActivities: activities,
+        isLoading: false,
+        error: null,
+      });
     } catch (error: any) {
-      console.error('Error fetching home data:', error);
+      console.error('[MemoryStore] Error fetching home data:', error);
       set({ error: error.message, isLoading: false });
     }
   },
 
-  addMemory: async (memory) => {
-    // Esta función ya la gestiona treeStore para insertar en DB
-    // La mantenemos aquí si la UI la llama, redirigiendo
-    console.log("Use treeStore.addFruit instead");
+  addMemory: async (_memory: MemoryItem) => {
+    console.log('[MemoryStore] Redirect addMemory to treeStore.addFruit');
   },
 
-  // ... resto del código ...
-
-  // Añadir ": string" después de prompt
   addMemoryWithAI: async (prompt: string) => {
-    // Aquí iría tu lógica de IA futura
-    console.log("Generando con IA:", prompt);
-  }
+    console.log('[MemoryStore] Generating AI memory with prompt:', prompt);
+  },
 }));

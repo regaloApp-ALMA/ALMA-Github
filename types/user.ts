@@ -6,6 +6,9 @@ export type UserType = {
   createdAt: string;
   treeId: string;
   connections: string[];
+  current_streak?: number;
+  last_interaction_date?: string | null;
+  invite_code?: string | null;
   // Campos nuevos para Supabase
   bio?: string;
   phone?: string;

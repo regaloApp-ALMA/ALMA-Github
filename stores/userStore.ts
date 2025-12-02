@@ -8,6 +8,26 @@ import * as WebBrowser from 'expo-web-browser';
 
 WebBrowser.maybeCompleteAuthSession();
 
+const ensureFreshStreak = async (profile: any) => {
+  const lastInteraction = profile?.last_interaction_date ? new Date(profile.last_interaction_date) : null;
+  const today = new Date();
+
+  if (!lastInteraction || Number.isNaN(lastInteraction.getTime())) {
+    if ((profile?.current_streak ?? 0) !== 0) {
+      await supabase.from('profiles').update({ current_streak: 0 }).eq('id', profile.id);
+    }
+    return { ...profile, current_streak: 0 };
+  }
+
+  const dayDiff = differenceInCalendarDays(today, lastInteraction);
+  if (dayDiff > 1 && (profile?.current_streak ?? 0) !== 0) {
+    await supabase.from('profiles').update({ current_streak: 0 }).eq('id', profile.id);
+    return { ...profile, current_streak: 0 };
+  }
+
+  return profile;
+};
+
 interface UserState {
   user: UserType | null;
   session: Session | null;
@@ -89,9 +109,11 @@ export const useUserStore = create<UserState>((set, get) => ({
           .eq('id', session.user.id)
           .single();
 
+        const normalizedProfile = profile ? await ensureFreshStreak(profile) : null;
+
         set({
           session,
-          user: profile ? { ...profile, email: session.user.email } as UserType : null,
+          user: normalizedProfile ? { ...normalizedProfile, email: session.user.email } as UserType : null,
           isAuthenticated: true
         });
       }
@@ -109,9 +131,11 @@ export const useUserStore = create<UserState>((set, get) => ({
           .eq('id', session.user.id)
           .single();
 
+        const normalizedProfile = profile ? await ensureFreshStreak(profile) : null;
+
         set({
           session,
-          user: profile ? { ...profile, email: session.user.email } as UserType : null,
+          user: normalizedProfile ? { ...normalizedProfile, email: session.user.email } as UserType : null,
           isAuthenticated: true
         });
       }

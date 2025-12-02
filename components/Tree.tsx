@@ -6,7 +6,7 @@ import { useTreeStore } from '@/stores/treeStore';
 import { BranchType, RootType } from '@/types/tree';
 import { useRouter } from 'expo-router';
 import colors from '@/constants/colors';
-import { Sprout } from 'lucide-react-native';
+import { Sprout, Share2 } from 'lucide-react-native';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -206,12 +206,22 @@ export default function Tree() {
                     )}
 
                     <TouchableOpacity
-                        style={styles.inviteCard}
-                        onPress={() => router.push('/share-tree')}
+                        style={styles.connectCard}
+                        onPress={() => router.push('/connect-root' as never)}
+                        testID="connect-root-button"
                     >
-                        <Text style={styles.inviteText}>+ Invitar</Text>
+                        <Text style={styles.connectText}>+ Conectar raíz</Text>
                     </TouchableOpacity>
                 </ScrollView>
+
+                <TouchableOpacity
+                    style={styles.shareButton}
+                    onPress={() => router.push('/share-tree')}
+                    testID="share-tree-button"
+                >
+                    <Share2 size={16} color={colors.primary} />
+                    <Text style={styles.shareButtonText}>Compartir mi legado</Text>
+                </TouchableOpacity>
             </View>
         </View>
     );
@@ -256,7 +266,6 @@ const styles = StyleSheet.create({
         borderTopLeftRadius: 24, borderTopRightRadius: 24,
         paddingVertical: 20, paddingHorizontal: 20,
         elevation: 15, shadowColor: '#000', shadowOffset: { width: 0, height: -5 }, shadowOpacity: 0.08, shadowRadius: 10,
-        height: 170,
     },
     panelTitle: {
         fontSize: 18, fontWeight: 'bold', color: DESIGN_THEME.textDark, marginBottom: 12
@@ -276,9 +285,26 @@ const styles = StyleSheet.create({
     rootRelation: { color: '#888', fontSize: 11 },
     emptyState: { marginRight: 10 },
     emptyText: { color: '#AAA', fontStyle: 'italic' },
-    inviteCard: {
-        backgroundColor: '#F0F4C3', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 16,
-        justifyContent: 'center', alignItems: 'center',
+    connectCard: {
+        backgroundColor: '#E1F5FE', paddingVertical: 12, paddingHorizontal: 18, borderRadius: 16,
+        justifyContent: 'center', alignItems: 'center', marginLeft: 8,
+        borderWidth: 1, borderColor: '#B3E5FC',
     },
-    inviteText: { color: '#558B2F', fontWeight: 'bold', fontSize: 13 },
+    connectText: { color: '#0277BD', fontWeight: 'bold', fontSize: 13 },
+    shareButton: {
+        marginTop: 16,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: colors.primary,
+        borderRadius: 16,
+        paddingVertical: 10,
+        gap: 8,
+    },
+    shareButtonText: {
+        color: colors.primary,
+        fontWeight: '600',
+        fontSize: 13,
+    },
 });
