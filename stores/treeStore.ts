@@ -3,6 +3,8 @@ import { supabase } from '@/lib/supabase';
 import { TreeType, BranchType, FruitType, RootType } from '@/types/tree';
 import { useUserStore } from './userStore';
 
+type TreePermissionScope = 'all' | 'custom';
+
 type NewBranchPayload = {
   name: string;
   categoryId: string;
@@ -16,17 +18,101 @@ interface TreeState {
   isLoading: boolean;
   isRefreshing: boolean;
   error: string | null;
-
   fetchMyTree: (isRefresh?: boolean) => Promise<void>;
-
-  // Funciones de Ramas
+  fetchTreeByPermission: (treeId: string) => Promise<void>;
   addBranch: (branch: NewBranchPayload) => Promise<void>;
   deleteBranch: (branchId: string) => Promise<void>;
-
-  // Funciones de Frutos
   addFruit: (fruit: Omit<FruitType, 'id' | 'createdAt'>) => Promise<void>;
   deleteFruit: (fruitId: string) => Promise<void>;
 }
+
+const formatBranches = (branches: any[]): BranchType[] =>
+  (branches || []).map((b) => ({
+    id: b.id,
+    name: b.name,
+    categoryId: b.category,
+    color: b.color,
+    createdAt: b.created_at,
+    isShared: Boolean(b.is_shared),
+    position: { x: 0, y: 0 },
+  }));
+
+const formatFruits = (fruits: any[]): FruitType[] =>
+  (fruits || []).map((f) => ({
+    id: f.id,
+    title: f.title,
+    description: f.description,
+    branchId: f.branch_id,
+    mediaUrls: f.media_urls || [],
+    createdAt: f.created_at,
+    isShared: Boolean(f.is_shared),
+    position: { x: 0, y: 0 },
+  }));
+
+const formatRoots = (roots: any[]): RootType[] =>
+  (roots || []).map((r) => ({
+    id: r.id,
+    name: r.relative?.name || 'Familiar',
+    relation: r.relation || 'Raíz',
+    createdAt: r.created_at,
+    treeId: r.tree_id,
+  }));
+
+const fetchBranches = async (treeId: string, branchFilter?: string[]) => {
+  if (Array.isArray(branchFilter) && branchFilter.length === 0) {
+    return { branches: [] as BranchType[], branchIds: [] as string[] };
+  }
+
+  let query = supabase
+    .from('branches')
+    .select('*')
+    .eq('tree_id', treeId)
+    .order('created_at', { ascending: true });
+
+  if (Array.isArray(branchFilter)) {
+    query = query.in('id', branchFilter);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  const formatted = formatBranches(data || []);
+  return { branches: formatted, branchIds: formatted.map((b) => b.id) };
+};
+
+const fetchFruits = async (branchIds: string[]) => {
+  if (!branchIds.length) return [] as FruitType[];
+  const { data, error } = await supabase
+    .from('fruits')
+    .select('*')
+    .in('branch_id', branchIds)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return formatFruits(data || []);
+};
+
+const fetchRoots = async (ownerId: string) => {
+  const { data, error } = await supabase
+    .from('family_connections')
+    .select('id, relation, created_at, tree_id, relative:profiles!relative_id (name)')
+    .eq('user_id', ownerId);
+  if (error) throw error;
+  return formatRoots(data || []);
+};
+
+const buildTreeState = async (treeData: any, branchFilter?: string[]): Promise<TreeType> => {
+  const { branches, branchIds } = await fetchBranches(treeData.id, branchFilter);
+  const fruits = await fetchFruits(branchIds);
+  const roots = await fetchRoots(treeData.owner_id);
+  return {
+    id: treeData.id,
+    ownerId: treeData.owner_id,
+    name: treeData.name,
+    createdAt: treeData.created_at,
+    branches,
+    fruits,
+    roots,
+  };
+};
 
 export const useTreeStore = create<TreeState>((set, get) => ({
   tree: null,
@@ -43,7 +129,6 @@ export const useTreeStore = create<TreeState>((set, get) => ({
     set({ error: null });
 
     try {
-      // 1. Obtener Árbol
       let { data: treeData, error: treeError } = await supabase
         .from('trees')
         .select('*')
@@ -52,7 +137,6 @@ export const useTreeStore = create<TreeState>((set, get) => ({
 
       if (treeError && treeError.code !== 'PGRST116') throw treeError;
 
-      // Si no existe árbol, crearlo automáticamente
       if (!treeData) {
         const { data: newTree, error: createError } = await supabase
           .from('trees')
@@ -63,78 +147,51 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         treeData = newTree;
       }
 
-      // 2. Obtener Ramas
-      const { data: branches, error: branchesError } = await supabase
-        .from('branches')
-        .select('*')
-        .eq('tree_id', treeData.id)
-        .order('created_at', { ascending: true });
-      if (branchesError) throw branchesError;
-
-      const formattedBranches: BranchType[] = (branches || []).map((b: any) => ({
-        id: b.id,
-        name: b.name,
-        categoryId: b.category, // Mapeo importante: DB 'category' -> Type 'categoryId'
-        color: b.color,
-        createdAt: b.created_at,
-        isShared: b.is_shared,
-        position: { x: 0, y: 0 }
-      }));
-
-      // 3. Obtener Frutos
-      const branchIds = formattedBranches.map(b => b.id);
-      let formattedFruits: FruitType[] = [];
-
-      if (branchIds.length > 0) {
-        const { data: fruits, error: fruitsError } = await supabase
-          .from('fruits')
-          .select('*')
-          .in('branch_id', branchIds)
-          .order('created_at', { ascending: false });
-
-        if (fruitsError) throw fruitsError;
-
-        formattedFruits = (fruits || []).map((f: any) => ({
-          id: f.id,
-          title: f.title,
-          description: f.description,
-          branchId: f.branch_id,
-          mediaUrls: f.media_urls || [],
-          createdAt: f.created_at,
-          isShared: f.is_shared || false,
-          position: { x: 0, y: 0 }
-        }));
-      }
-
-      // 4. Obtener Raíces (Familiares)
-      const { data: rootsData } = await supabase
-        .from('family_connections')
-        .select(`id, relation, created_at, relative:profiles!relative_id (name)`)
-        .eq('user_id', userId);
-
-      const formattedRoots: RootType[] = (rootsData || []).map((r: any) => ({
-        id: r.id,
-        name: r.relative?.name || 'Familiar',
-        relation: r.relation || 'Raíz',
-        createdAt: r.created_at,
-        treeId: treeData.id
-      }));
-
-      set({
-        tree: {
-          id: treeData.id,
-          ownerId: treeData.owner_id,
-          name: treeData.name,
-          createdAt: treeData.created_at,
-          branches: formattedBranches,
-          fruits: formattedFruits,
-          roots: formattedRoots
-        }, isLoading: false
-      });
-
+      const tree = await buildTreeState(treeData);
+      set({ tree, isLoading: false, isRefreshing: false });
     } catch (error: any) {
       console.error('Error fetching tree:', error);
-      set({ error: error.message, isLoading: false });
+      set({ error: error.message, isLoading: false, isRefreshing: false });
+    }
+  },
+
+  fetchTreeByPermission: async (treeId: string) => {
+    const userState = useUserStore.getState().user;
+    if (!userState) return;
+
+    set({ isLoading: true, error: null });
+
+    try {
+      const recipientFilters = [`recipient_id.eq.${userState.id}`];
+      if (userState.email) {
+        recipientFilters.push(`recipient_email.eq.${userState.email.toLowerCase()}`);
+      }
+
+      const { data: permission, error: permissionError } = await supabase
+        .from('tree_permissions')
+        .select('scope, allowed_branch_ids, tree_id')
+        .eq('tree_id', treeId)
+        .or(recipientFilters.join(','))
+        .order('created_at', { ascending: false })
+        .maybeSingle();
+
+      if (permissionError) throw permissionError;
+      if (!permission) throw new Error('No tienes acceso a este árbol.');
+
+      const { data: treeData, error: treeError } = await supabase
+        .from('trees')
+        .select('*')
+        .eq('id', permission.tree_id)
+        .single();
+      if (treeError) throw treeError;
+
+      const selectedScope = (permission.scope as TreePermissionScope) || 'all';
+      const branchFilter = selectedScope === 'all' ? undefined : permission.allowed_branch_ids || [];
+      const tree = await buildTreeState(treeData, branchFilter as string[] | undefined);
+      set({ tree, isLoading: false, isRefreshing: false });
+    } catch (error: any) {
+      console.error('Error fetching shared tree:', error);
+      set({ error: error.message, isLoading: false, isRefreshing: false });
     }
   },
 
@@ -147,37 +204,32 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         name: branch.name,
         category: branch.categoryId,
         color: branch.color,
-        is_shared: branch.isShared ?? false
+        is_shared: branch.isShared ?? false,
       });
       if (error) throw error;
       get().fetchMyTree();
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+    }
   },
 
   deleteBranch: async (branchId) => {
     const previousTree = get().tree;
-
-    // 1. UI Instantánea: Borramos la rama Y sus frutos visualmente
     if (previousTree) {
       set({
         tree: {
           ...previousTree,
-          branches: previousTree.branches.filter(b => b.id !== branchId),
-          // Importante: filtramos también los frutos visualmente para actualizar contadores
-          fruits: previousTree.fruits.filter(f => f.branchId !== branchId)
-        }
+          branches: previousTree.branches.filter((b) => b.id !== branchId),
+          fruits: previousTree.fruits.filter((f) => f.branchId !== branchId),
+        },
       });
     }
 
     try {
-      // 2. Borrado en DB
-      // Como configuraste "CASCADE" en Supabase, borrar la rama borra sus frutos automáticamente
       const { error } = await supabase.from('branches').delete().eq('id', branchId);
       if (error) throw error;
-
     } catch (error: any) {
       console.error('Error deleting branch:', error);
-      // Si falla, restauramos
       set({ tree: previousTree, error: 'No se pudo borrar la rama.' });
       get().fetchMyTree();
     }
@@ -191,38 +243,33 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         description: fruit.description,
         media_urls: fruit.mediaUrls,
         is_shared: fruit.isShared,
-        date: new Date().toISOString()
+        date: new Date().toISOString(),
       });
       if (error) throw error;
       get().fetchMyTree();
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error(e);
+    }
   },
 
-  // --- AQUÍ ESTÁ LA SOLUCIÓN AL BUG DE BORRADO DE FRUTOS ---
   deleteFruit: async (fruitId: string) => {
     const previousTree = get().tree;
-
-    // 1. UI Instantánea: Filtramos SOLO el fruto que coincide con el ID
     if (previousTree) {
       set({
         tree: {
           ...previousTree,
-          fruits: previousTree.fruits.filter(f => f.id !== fruitId)
-        }
+          fruits: previousTree.fruits.filter((f) => f.id !== fruitId),
+        },
       });
     }
 
     try {
-      // 2. Borrado en DB: Usamos .eq('id', fruitId) para ser quirúrgicos
       const { error } = await supabase.from('fruits').delete().eq('id', fruitId);
-
       if (error) throw error;
-
     } catch (error: any) {
       console.error('Error deleting fruit:', error);
-      // Si falla, restauramos la vista anterior
       set({ tree: previousTree, error: 'No se pudo borrar el recuerdo.' });
-      get().fetchMyTree(); // Recargamos para asegurar consistencia
+      get().fetchMyTree();
     }
-  }
+  },
 }));

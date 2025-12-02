@@ -129,7 +129,7 @@ export default function ConnectRootScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Conectar mis raíces', headerShown: false }} />
+      <Stack.Screen options={{ title: 'Conectar mis raíces', headerShown: true }} />
       <ScrollView style={styles.screen} contentContainerStyle={styles.contentContainer}>
         <LinearGradient colors={['#0BAB64', '#3BB78F']} style={styles.heroCard}>
           <View style={styles.heroIconWrapper}>

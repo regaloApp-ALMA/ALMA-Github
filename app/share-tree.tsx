@@ -13,13 +13,15 @@ import {
 } from 'react-native';
 import { Stack } from 'expo-router';
 import colors from '@/constants/colors';
-import { Share2, Mail, Copy, Link2, CheckCircle2, Check, ClipboardCopy } from 'lucide-react-native';
+import { Share2, Mail, Copy, Link2, CheckCircle2, ClipboardCopy, Shield } from 'lucide-react-native';
 import { useTreeStore } from '@/stores/treeStore';
 import { useUserStore } from '@/stores/userStore';
 import { useThemeStore } from '@/stores/themeStore';
 import { supabase } from '@/lib/supabase';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
+
+type ShareScope = 'all' | 'custom';
 
 export default function ShareTreeScreen() {
   const { tree } = useTreeStore();
@@ -30,14 +32,18 @@ export default function ShareTreeScreen() {
   const [email, setEmail] = useState('');
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(false);
-  const [shareEntireTree, setShareEntireTree] = useState(true);
+  const [shareScope, setShareScope] = useState<ShareScope>('all');
   const [selectedBranches, setSelectedBranches] = useState<string[]>([]);
 
+  const branches = useMemo(() => tree?.branches || [], [tree?.branches]);
+  const allBranchIds = useMemo(() => branches.map((branch) => branch.id), [branches]);
+
   useEffect(() => {
-    if (tree?.branches?.length) {
-      setSelectedBranches(tree.branches.map(branch => branch.id));
+    setSelectedBranches(branches.map((branch) => branch.id));
+    if (!branches.length) {
+      setShareScope('all');
     }
-  }, [tree?.branches]);
+  }, [branches]);
 
   const shareCode = useMemo(() => {
     if (!tree?.id) return 'SIN-COD';
@@ -50,26 +56,12 @@ export default function ShareTreeScreen() {
     return `https://alma.app/share/tree/${tree.id}`;
   }, [tree?.id]);
 
-  const toggleBranch = (branchId: string) => {
-    if (shareEntireTree) return;
-    setSelectedBranches(prev =>
-      prev.includes(branchId) ? prev.filter(id => id !== branchId) : [...prev, branchId]
-    );
-  };
-
-  const handleShareEntireTreeToggle = (value: boolean) => {
-    setShareEntireTree(value);
-    if (value && tree?.branches?.length) {
-      setSelectedBranches(tree.branches.map(branch => branch.id));
-    }
-  };
-
   const handleCopyLink = async () => {
     try {
       await Clipboard.setStringAsync(shareLink);
       Alert.alert('Enlace copiado', 'El enlace se guardó en tu portapapeles.');
     } catch (copyError) {
-      console.error('[ShareTree] Clipboard link error', copyError);
+      console.error('[ShareTree] copy link error', copyError);
       Alert.alert('Error', 'No pudimos copiar el enlace.');
     }
   };
@@ -79,7 +71,7 @@ export default function ShareTreeScreen() {
       await Clipboard.setStringAsync(shareCode);
       Alert.alert('Código copiado', 'Comparte este código con tus familiares.');
     } catch (copyError) {
-      console.error('[ShareTree] Clipboard code error', copyError);
+      console.error('[ShareTree] copy code error', copyError);
       Alert.alert('Error', 'No pudimos copiar el código.');
     }
   };
@@ -90,10 +82,39 @@ export default function ShareTreeScreen() {
         message: `${message || 'Te invito a conocer mi árbol familiar.'} ${shareLink}`,
       });
     } catch (shareError) {
-      console.error('[ShareTree] Native share error', shareError);
+      console.error('[ShareTree] native share error', shareError);
       Alert.alert('Error', 'No pudimos abrir el panel para compartir.');
     }
   };
+
+  const handleSelectAllToggle = (value: boolean) => {
+    if (value) {
+      setShareScope('all');
+      setSelectedBranches(allBranchIds);
+    } else {
+      setShareScope('custom');
+      setSelectedBranches([]);
+    }
+  };
+
+  const toggleBranch = (branchId: string, enabled: boolean) => {
+    if (shareScope === 'all' && !enabled) {
+      setShareScope('custom');
+      setSelectedBranches(allBranchIds.filter((id) => id !== branchId));
+      return;
+    }
+
+    setShareScope('custom');
+    setSelectedBranches((prev) => {
+      if (enabled) {
+        if (prev.includes(branchId)) return prev;
+        return [...prev, branchId];
+      }
+      return prev.filter((id) => id !== branchId);
+    });
+  };
+
+  const canSend = shareScope === 'all' || selectedBranches.length > 0;
 
   const handleEmailInvite = async () => {
     if (!email.trim()) {
@@ -106,7 +127,7 @@ export default function ShareTreeScreen() {
       return;
     }
 
-    if (!shareEntireTree && selectedBranches.length === 0) {
+    if (!canSend) {
       Alert.alert('Selecciona ramas', 'Elige al menos una rama para compartir.');
       return;
     }
@@ -126,6 +147,9 @@ export default function ShareTreeScreen() {
         recipient_email: normalizedEmail,
         recipient_id: recipientUser?.id || null,
         access_level: 'view',
+        scope: shareScope,
+        allowed_branch_ids: shareScope === 'all' ? null : selectedBranches,
+        personal_message: message || null,
       });
 
       Alert.alert('Invitación enviada', `Compartiste tu árbol con ${normalizedEmail}.`);
@@ -138,33 +162,99 @@ export default function ShareTreeScreen() {
     }
   };
 
-  const branchList = tree?.branches || [];
-
   return (
     <>
       <Stack.Screen
         options={{
           title: 'Compartir Mi Árbol',
-          headerShown: false,
+          headerShown: true,
         }}
       />
 
-      <ScrollView style={styles.screen} contentContainerStyle={styles.contentContainer}>
-        <LinearGradient colors={['#2ECC71', '#27AE60']} style={styles.heroCard}>
+      <ScrollView style={styles.screen} contentContainerStyle={styles.contentContainer} testID="share-scroll">
+        <LinearGradient colors={['#2ECC71', '#27AE60']} style={styles.heroCard} testID="share-hero">
           <View style={styles.heroIconWrapper}>
             <Share2 size={32} color={colors.white} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.heroTitle}>Comparte tu árbol con seres queridos</Text>
             <Text style={styles.heroSubtitle}>
-              Envía invitaciones, comparte un enlace o facilita tu código único.
+              Selecciona qué ramas compartir, invita por email o genera acceso seguro.
             </Text>
           </View>
         </LinearGradient>
 
         <View style={[styles.sectionCard, isDarkMode && styles.sectionCardDark]}>
           <View style={styles.sectionHeader}>
-            <View style={styles.sectionHeaderLeft}>
+            <View style={styles.headerLeft}>
+              <Shield size={18} color={colors.primary} />
+              <Text style={[styles.sectionTitle, isDarkMode && styles.textWhite]}>Alcance del acceso</Text>
+            </View>
+            <Text style={[styles.scopeSummary, isDarkMode && styles.textLight]}>
+              {shareScope === 'all' ? 'Compartiendo todo el árbol' : `${selectedBranches.length} ramas seleccionadas`}
+            </Text>
+          </View>
+
+          <View style={styles.scopeCard}>
+            <View>
+              <Text style={[styles.toggleTitle, isDarkMode && styles.textWhite]}>Seleccionar todo</Text>
+              <Text style={[styles.toggleSubtitle, isDarkMode && styles.textLight]}>Incluye todas las ramas actuales y futuras</Text>
+            </View>
+            <Switch
+              value={shareScope === 'all'}
+              onValueChange={handleSelectAllToggle}
+              thumbColor={shareScope === 'all' ? colors.white : '#FFF'}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              testID="share-select-all-switch"
+            />
+          </View>
+
+          {branches.length > 0 && (
+            <View style={styles.branchGrid}>
+              {branches.map((branch) => {
+                const enabled = shareScope === 'all' ? true : selectedBranches.includes(branch.id);
+                return (
+                  <View
+                    key={branch.id}
+                    style={[styles.branchCard, isDarkMode && styles.branchCardDark, enabled && styles.branchCardActive]}
+                  >
+                    <View style={styles.branchInfo}>
+                      <View style={[styles.branchDot, { backgroundColor: branch.color || colors.primary }]} />
+                      <Text style={[styles.branchName, isDarkMode && styles.textWhite]} numberOfLines={1}>
+                        {branch.name}
+                      </Text>
+                    </View>
+                    <View style={styles.branchAction}>
+                      <Text style={[styles.branchStatus, enabled ? styles.branchStatusOn : styles.branchStatusOff]}>
+                        {enabled ? 'Sí' : 'No'}
+                      </Text>
+                      <Switch
+                        value={enabled}
+                        onValueChange={(value) => toggleBranch(branch.id, value)}
+                        thumbColor={enabled ? colors.white : '#FFF'}
+                        trackColor={{ false: colors.border, true: colors.primary }}
+                        disabled={shareScope === 'all'}
+                        testID={`branch-switch-${branch.id}`}
+                      />
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
+          {branches.length === 0 && (
+            <View style={styles.emptyBranches}>
+              <Text style={[styles.emptyBranchesText, isDarkMode && styles.textLight]}>
+                Aún no tienes ramas para compartir.
+              </Text>
+            </View>
+          )}
+        </View>
+
+        <View style={[styles.sectionCard, isDarkMode && styles.sectionCardDark]}>
+          <View style={styles.sectionHeader}>
+            <View style={styles.headerLeft}>
               <Mail size={18} color={colors.primary} />
               <Text style={[styles.sectionTitle, isDarkMode && styles.textWhite]}>Invitar por correo electrónico</Text>
             </View>
@@ -195,9 +285,9 @@ export default function ShareTreeScreen() {
           />
 
           <TouchableOpacity
-            style={[styles.primaryButton, loading && styles.disabledButton]}
+            style={[styles.primaryButton, (loading || !canSend) && styles.disabledButton]}
             onPress={handleEmailInvite}
-            disabled={loading}
+            disabled={loading || !canSend}
             testID="share-send-button"
           >
             {loading ? (
@@ -206,53 +296,6 @@ export default function ShareTreeScreen() {
               <Text style={styles.primaryButtonText}>Enviar invitación</Text>
             )}
           </TouchableOpacity>
-        </View>
-
-        <View style={[styles.sectionCard, isDarkMode && styles.sectionCardDark]}>
-          <Text style={[styles.sectionTitle, isDarkMode && styles.textWhite]}>¿Qué quieres compartir?</Text>
-
-          <View style={styles.toggleRow}>
-            <View>
-              <Text style={[styles.toggleTitle, isDarkMode && styles.textWhite]}>Árbol completo</Text>
-              <Text style={[styles.toggleSubtitle, isDarkMode && styles.textLight]}>Incluye todas las ramas y frutos</Text>
-            </View>
-            <Switch
-              value={shareEntireTree}
-              onValueChange={handleShareEntireTreeToggle}
-              thumbColor={shareEntireTree ? colors.white : '#FFF'}
-              trackColor={{ false: colors.border, true: colors.primary }}
-              testID="share-full-switch"
-            />
-          </View>
-
-          {!shareEntireTree && (
-            <View style={styles.branchesList}>
-              {branchList.length === 0 ? (
-                <Text style={[styles.emptyBranchesText, isDarkMode && styles.textLight]}>
-                  Aún no tienes ramas para compartir.
-                </Text>
-              ) : (
-                branchList.map((branch) => {
-                  const checked = selectedBranches.includes(branch.id);
-                  return (
-                    <TouchableOpacity
-                      key={branch.id}
-                      style={styles.branchRow}
-                      onPress={() => toggleBranch(branch.id)}
-                      activeOpacity={0.8}
-                      testID={`branch-checkbox-${branch.id}`}
-                    >
-                      <View style={[styles.branchColorDot, { backgroundColor: branch.color || colors.primary }]} />
-                      <Text style={[styles.branchLabel, isDarkMode && styles.textWhite]}>{branch.name}</Text>
-                      <View style={[styles.checkbox, checked && styles.checkboxChecked]}>
-                        {checked && <Check size={14} color={colors.white} />}
-                      </View>
-                    </TouchableOpacity>
-                  );
-                })
-              )}
-            </View>
-          )}
         </View>
 
         <View style={[styles.sectionCard, isDarkMode && styles.sectionCardDark]}>
@@ -267,7 +310,7 @@ export default function ShareTreeScreen() {
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={[styles.secondaryButton]} onPress={handleShareLink} testID="share-native-button">
+          <TouchableOpacity style={styles.secondaryButton} onPress={handleShareLink} testID="share-native-button">
             <Link2 size={18} color={colors.white} />
             <Text style={styles.secondaryButtonText}>Compartir enlace</Text>
           </TouchableOpacity>
@@ -350,11 +393,11 @@ const styles = StyleSheet.create({
   },
   sectionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 16,
   },
-  sectionHeaderLeft: {
+  headerLeft: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
@@ -363,6 +406,92 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: colors.text,
+  },
+  scopeSummary: {
+    fontSize: 13,
+    color: colors.textLight,
+  },
+  scopeCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 16,
+    backgroundColor: colors.background,
+    marginBottom: 18,
+  },
+  toggleTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  toggleSubtitle: {
+    fontSize: 13,
+    color: colors.textLight,
+    marginTop: 4,
+  },
+  branchGrid: {
+    gap: 12,
+  },
+  branchCard: {
+    borderRadius: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.background,
+  },
+  branchCardDark: {
+    backgroundColor: '#2A2A2A',
+    borderColor: '#3A3A3A',
+  },
+  branchCardActive: {
+    borderColor: colors.primary,
+  },
+  branchInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    flex: 1,
+  },
+  branchDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  branchName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  branchAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  branchStatus: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  branchStatusOn: {
+    color: colors.primary,
+  },
+  branchStatusOff: {
+    color: colors.textLight,
+  },
+  emptyBranches: {
+    padding: 16,
+    borderRadius: 12,
+    backgroundColor: colors.background,
+  },
+  emptyBranchesText: {
+    fontSize: 14,
+    color: colors.textLight,
   },
   label: {
     fontSize: 14,
@@ -396,63 +525,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   disabledButton: {
-    opacity: 0.7,
+    opacity: 0.6,
   },
   primaryButtonText: {
     color: colors.white,
     fontWeight: '700',
     fontSize: 16,
-  },
-  toggleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 6,
-  },
-  toggleTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  toggleSubtitle: {
-    fontSize: 13,
-    color: colors.textLight,
-  },
-  branchesList: {
-    marginTop: 16,
-    gap: 12,
-  },
-  branchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-  },
-  branchColorDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    marginRight: 12,
-  },
-  branchLabel: {
-    flex: 1,
-    fontSize: 15,
-    color: colors.text,
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: colors.primary,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxChecked: {
-    backgroundColor: colors.primary,
   },
   linkRow: {
     flexDirection: 'row',
@@ -536,10 +614,6 @@ const styles = StyleSheet.create({
     color: colors.textLight,
     textAlign: 'center',
     paddingHorizontal: 10,
-  },
-  emptyBranchesText: {
-    fontSize: 14,
-    color: colors.textLight,
   },
   textWhite: {
     color: colors.white,

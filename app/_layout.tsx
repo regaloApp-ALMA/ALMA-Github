@@ -2,11 +2,12 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useFonts } from "expo-font";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { Platform, StatusBar } from "react-native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useUserStore } from "@/stores/userStore";
 import { useThemeStore } from "@/stores/themeStore";
+import { useTreeStore } from "@/stores/treeStore";
 import colors from "@/constants/colors";
 import { ErrorBoundary } from "./error-boundary";
 
@@ -27,6 +28,8 @@ export default function RootLayout() {
   const segments = useSegments();
   const router = useRouter();
   const { theme } = useThemeStore();
+  const fetchMyTree = useTreeStore((state) => state.fetchMyTree);
+  const hasBootstrappedTree = useRef(false);
 
   useEffect(() => {
     if (error) throw error;
@@ -52,6 +55,18 @@ export default function RootLayout() {
       router.replace('/(tabs)');
     }
   }, [isAuthenticated, segments, loaded, router]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      hasBootstrappedTree.current = false;
+      return;
+    }
+
+    if (!hasBootstrappedTree.current) {
+      fetchMyTree();
+      hasBootstrappedTree.current = true;
+    }
+  }, [fetchMyTree, isAuthenticated]);
 
   useEffect(() => {
     if (Platform.OS === 'ios' || Platform.OS === 'android') {

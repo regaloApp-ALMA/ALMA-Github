@@ -1,14 +1,20 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
 import Tree from '@/components/Tree';
 import colors from '@/constants/colors';
+import { useTreeStore } from '@/stores/treeStore';
 
 export default function TreeScreen() {
+  const { tree, fetchMyTree, isLoading } = useTreeStore();
+
+  useEffect(() => {
+    if (!tree && !isLoading) {
+      fetchMyTree();
+    }
+  }, [fetchMyTree, isLoading, tree]);
+
   return (
     <View style={styles.container}>
-      {/* Renderizamos solo el componente Tree. 
-          Los botones flotantes (FAB y Asistente) ya están en _layout.tsx, 
-          así evitamos que salgan duplicados. */}
       <Tree />
     </View>
   );
@@ -17,7 +23,6 @@ export default function TreeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    // El color de fondo lo maneja el componente Tree, pero esto asegura consistencia
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.background,
   },
 });
