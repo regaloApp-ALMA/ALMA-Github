@@ -2,7 +2,7 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { useFonts } from "expo-font";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import { useEffect } from "react";
+import React, { useEffect } from "react";
 import { Platform, StatusBar } from "react-native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useUserStore } from "@/stores/userStore";
@@ -37,7 +37,7 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
       initialize(); // Verificar si hay sesión guardada al arrancar
     }
-  }, [loaded]);
+  }, [initialize, loaded]);
 
   useEffect(() => {
     if (!loaded) return;
@@ -67,12 +67,11 @@ export default function RootLayout() {
   }
 
   return (
-    <ErrorBoundary>
-      {/* Eliminamos trpc.Provider y dejamos solo QueryClient */}
-      <QueryClientProvider client={queryClient}>
+    <QueryClientProvider client={queryClient}>
+      <ErrorBoundary>
         <RootLayoutNav theme={theme} />
-      </QueryClientProvider>
-    </ErrorBoundary>
+      </ErrorBoundary>
+    </QueryClientProvider>
   );
 }
 
