@@ -14,7 +14,7 @@ import { useTreeStore } from '@/stores/treeStore';
 import { BranchType, RootType } from '@/types/tree';
 import { useRouter } from 'expo-router';
 import colors from '@/constants/colors';
-import { Sprout, Share2, Sparkles } from 'lucide-react-native';
+import { Sprout, Share2 } from 'lucide-react-native';
 
 const CANVAS_WIDTH = 1200;
 const CANVAS_HEIGHT = 1800;
@@ -176,17 +176,6 @@ export default function Tree() {
       </ReactNativeZoomableView>
 
       <View style={styles.bottomPanel}>
-        <View style={styles.aiRow}>
-          <TouchableOpacity
-            style={styles.aiButton}
-            onPress={() => router.push('/ai-assistant')}
-            testID="tree-ai-button"
-          >
-            <Sparkles size={18} color={colors.white} />
-            <Text style={styles.aiButtonText}>IA del árbol</Text>
-          </TouchableOpacity>
-        </View>
-
         <View style={styles.primaryActions}>
           <TouchableOpacity
             style={styles.connectButton}
@@ -311,23 +300,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -5 },
     shadowOpacity: 0.08,
     shadowRadius: 10,
-  },
-  aiRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-  },
-  aiButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.secondary,
-    borderRadius: 30,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  aiButtonText: {
-    color: colors.white,
-    fontWeight: '600',
   },
   primaryActions: {
     flexDirection: 'row',

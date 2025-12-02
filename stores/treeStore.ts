@@ -73,7 +73,7 @@ const formatRoots = (roots: any[]): RootType[] =>
     name: r.relative?.name || 'Familiar',
     relation: r.relation || 'Raíz',
     createdAt: r.created_at,
-    treeId: r.tree_id,
+    treeId: undefined,
   }));
 
 const fetchBranches = async (treeId: string, branchFilter?: string[]) => {
@@ -111,7 +111,7 @@ const fetchFruits = async (branchIds: string[]) => {
 const fetchRoots = async (ownerId: string) => {
   const { data, error } = await supabase
     .from('family_connections')
-    .select('id, relation, created_at, tree_id, relative:profiles!relative_id (name)')
+    .select('id, relation, created_at, relative:profiles!relative_id (name)')
     .eq('user_id', ownerId);
   if (error) throw error;
   return formatRoots(data || []);
