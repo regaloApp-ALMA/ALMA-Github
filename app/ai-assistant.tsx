@@ -1,35 +1,39 @@
 import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, ScrollView, Alert } from 'react-native';
-import { Send, Image as ImageIcon } from 'lucide-react-native';
+import { Send } from 'lucide-react-native';
 import colors from '@/constants/colors';
-import { supabase } from '@/lib/supabase';
 import { useThemeStore } from '@/stores/themeStore';
 import { useTreeStore } from '@/stores/treeStore';
 import categories from '@/constants/categories';
 
 type Message = { id: string; role: 'user' | 'assistant' | 'system'; content: string; };
 
+type PendingCommand =
+  | { action: 'create_branch'; data: { name: string; category?: string } }
+  | { action: 'create_fruit'; data: { title: string; description: string; branchName?: string } };
+
 export default function AIAssistant() {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([{ id: '1', role: 'assistant', content: 'Hola. Soy ALMA, estoy aquí para escuchar tus historias y ayudarte a guardarlas. ¿Qué recuerdo te gustaría conservar hoy?' }]);
   const [isLoading, setIsLoading] = useState(false);
+  const [pendingCommand, setPendingCommand] = useState<PendingCommand | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const { theme } = useThemeStore();
   const { addBranch, addFruit, tree } = useTreeStore();
   const isDarkMode = theme === 'dark';
 
-  const executeAICommand = async (command: any) => {
+  // Ejecuta realmente la acción pendiente (solo cuando el usuario confirma)
+  const executeAICommand = async (command: PendingCommand) => {
     try {
       if (command.action === 'create_branch') {
         const catObj = categories.find(c => c.id === command.data.category) || categories[0];
         await addBranch({
           name: command.data.name,
+          // Permitimos categorías libres: si no coincide, usamos 'hobbies' como fallback.
           categoryId: command.data.category || 'hobbies',
           color: catObj.color,
-          isShared: false,
-          position: { x: 0, y: 0 }
-        });
-        return null; // La acción fue exitosa, no necesitamos devolver texto extra, la IA ya lo dijo.
+        } as any);
+        return null;
       }
 
       else if (command.action === 'create_fruit') {
@@ -94,8 +98,9 @@ export default function AIAssistant() {
               
               INSTRUCCIONES CLAVE:
               1. SÉ AMABLE: Responde siempre con calidez, comentando lo que te cuentan. No seas un robot.
-              2. DETECTA INTENCIONES: Si el usuario te cuenta un recuerdo o quiere crear una rama, añade al FINAL de tu respuesta un bloque JSON (oculto para el usuario) para ejecutar la acción.
-              3. USA LAS RAMAS REALES: Si te piden guardar un recuerdo, intenta asignarlo a una de las "RAMAS EXISTENTES" que mejor encaje. Si no encaja ninguna, usa la más lógica o sugiere crear una nueva.
+              2. DETECTA INTENCIONES: Si el usuario te cuenta un recuerdo o quiere crear una rama, SOLO CUANDO HAYAS REUNIDO SUFICIENTE CONTEXTO propón UN ÚNICO resumen elaborado (rama o recuerdo) para guardar.
+              3. BLOQUE JSON: al FINAL de tu respuesta genera como mucho UN SOLO bloque JSON con la propuesta (no uno por mensaje). No guardes nada directamente, solo propones.
+              4. USA LAS RAMAS REALES: Si te piden guardar un recuerdo, intenta asignarlo a una de las "RAMAS EXISTENTES" que mejor encaje. Si no encaja ninguna, usa la más lógica o sugiere crear una nueva.
 
               FORMATO JSON (Ponlo SOLO si hay que guardar algo, al final del texto):
               
@@ -124,13 +129,9 @@ export default function AIAssistant() {
         visibleReply = aiFullReply.replace(jsonMatch[0], '').trim();
 
         try {
-          const command = JSON.parse(jsonMatch[1]);
-          const executionResult = await executeAICommand(command);
-
-          // Si hubo un error o aviso, lo añadimos a la respuesta visible
-          if (executionResult) {
-            visibleReply += `\n\n(Nota: ${executionResult})`;
-          }
+          const command = JSON.parse(jsonMatch[1]) as PendingCommand;
+          // En lugar de ejecutar directamente, guardamos la acción propuesta para que el usuario la confirme.
+          setPendingCommand(command);
         } catch (e) {
           console.error("Error parsing command:", e);
         }
@@ -153,10 +154,94 @@ export default function AIAssistant() {
         onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
       >
         {messages.map(msg => (
-          <View key={msg.id} style={[styles.bubble, msg.role === 'user' ? styles.userBubble : styles.botBubble, isDarkMode && msg.role === 'assistant' && styles.botBubbleDark]}>
-            <Text style={[styles.text, msg.role === 'user' ? styles.textWhite : isDarkMode ? styles.textWhite : styles.textBlack]}>{msg.content}</Text>
+          <View
+            key={msg.id}
+            style={[
+              styles.bubble,
+              msg.role === 'user' ? styles.userBubble : styles.botBubble,
+              isDarkMode && msg.role === 'assistant' && styles.botBubbleDark,
+            ]}
+          >
+            <Text
+              style={[
+                styles.text,
+                msg.role === 'user' ? styles.textWhite : isDarkMode ? styles.textWhite : styles.textBlack,
+              ]}
+            >
+              {msg.content}
+            </Text>
           </View>
         ))}
+
+        {/* Tarjeta de confirmación cuando la IA propone guardar algo */}
+        {pendingCommand && (
+          <View style={[styles.summaryCard, isDarkMode && styles.summaryCardDark]}>
+            <Text style={[styles.summaryTitle, isDarkMode && styles.textWhite]}>
+              {pendingCommand.action === 'create_fruit'
+                ? '¿Guardamos este recuerdo en tu árbol?'
+                : '¿Creamos esta nueva rama en tu árbol?'}
+            </Text>
+
+            {pendingCommand.action === 'create_fruit' ? (
+              <>
+                <Text style={[styles.summaryLabel, isDarkMode && styles.textLight]}>Título</Text>
+                <Text style={[styles.summaryValue, isDarkMode && styles.textWhite]}>
+                  {pendingCommand.data.title}
+                </Text>
+                <Text style={[styles.summaryLabel, isDarkMode && styles.textLight]}>Descripción</Text>
+                <Text style={[styles.summaryValue, isDarkMode && styles.textWhite]}>
+                  {pendingCommand.data.description}
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={[styles.summaryLabel, isDarkMode && styles.textLight]}>Nombre de la rama</Text>
+                <Text style={[styles.summaryValue, isDarkMode && styles.textWhite]}>
+                  {pendingCommand.data.name}
+                </Text>
+                {pendingCommand.data.category && (
+                  <>
+                    <Text style={[styles.summaryLabel, isDarkMode && styles.textLight]}>Categoría</Text>
+                    <Text style={[styles.summaryValue, isDarkMode && styles.textWhite]}>
+                      {pendingCommand.data.category}
+                    </Text>
+                  </>
+                )}
+              </>
+            )}
+
+            <View style={styles.summaryActions}>
+              <TouchableOpacity
+                style={[styles.cancelBtn, isDarkMode && styles.cancelBtnDark]}
+                onPress={() => setPendingCommand(null)}
+              >
+                <Text style={[styles.cancelText, isDarkMode && styles.textWhite]}>Más tarde</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.confirmBtn}
+                onPress={async () => {
+                  if (!pendingCommand) return;
+                  const cmd = pendingCommand;
+                  setPendingCommand(null);
+                  const note = await executeAICommand(cmd);
+                  if (note) {
+                    Alert.alert('Aviso', note);
+                  } else {
+                    Alert.alert(
+                      'Guardado',
+                      cmd.action === 'create_fruit'
+                        ? 'Tu recuerdo se ha añadido a tu árbol.'
+                        : 'Hemos creado una nueva rama en tu árbol.'
+                    );
+                  }
+                }}
+              >
+                <Text style={styles.confirmText}>Guardar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         {isLoading && <ActivityIndicator color={colors.primary} style={{ margin: 10 }} />}
       </ScrollView>
 
@@ -169,7 +254,7 @@ export default function AIAssistant() {
           placeholderTextColor={isDarkMode ? '#777' : '#999'}
           multiline
         />
-        <TouchableOpacity onPress={handleSend} style={styles.sendBtn}>
+        <TouchableOpacity onPress={handleSend} style={styles.sendBtn} disabled={isLoading}>
           <Send size={20} color="#FFF" />
         </TouchableOpacity>
       </View>
@@ -188,9 +273,74 @@ const styles = StyleSheet.create({
   text: { fontSize: 16, lineHeight: 22 },
   textWhite: { color: '#FFF' },
   textBlack: { color: '#333' },
+  textLight: { color: '#AAA' },
   inputContainer: { flexDirection: 'row', padding: 10, backgroundColor: '#FFF', alignItems: 'center' },
   inputContainerDark: { backgroundColor: '#1E1E1E' },
   input: { flex: 1, backgroundColor: '#F0F2F5', borderRadius: 25, paddingHorizontal: 20, paddingVertical: 10, fontSize: 16, marginRight: 10, maxHeight: 100 },
   inputDark: { backgroundColor: '#333', color: '#FFF' },
-  sendBtn: { backgroundColor: colors.primary, width: 45, height: 45, borderRadius: 23, justifyContent: 'center', alignItems: 'center' }
+  sendBtn: { backgroundColor: colors.primary, width: 45, height: 45, borderRadius: 23, justifyContent: 'center', alignItems: 'center' },
+
+  // Tarjeta de confirmación
+  summaryCard: {
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+    alignSelf: 'stretch',
+  },
+  summaryCardDark: {
+    backgroundColor: '#1E1E1E',
+  },
+  summaryTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    color: colors.text,
+  },
+  summaryLabel: {
+    fontSize: 12,
+    color: colors.textLight,
+    marginTop: 4,
+  },
+  summaryValue: {
+    fontSize: 14,
+    marginTop: 2,
+    color: colors.text,
+  },
+  summaryActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 12,
+    gap: 8,
+  },
+  cancelBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  cancelBtnDark: {
+    borderColor: '#444',
+  },
+  cancelText: {
+    color: colors.text,
+    fontSize: 13,
+  },
+  confirmBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: colors.primary,
+  },
+  confirmText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
 });

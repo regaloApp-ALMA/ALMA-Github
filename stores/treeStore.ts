@@ -186,7 +186,9 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         date: new Date().toISOString()
       });
       if (error) throw error;
+      // Actualizamos árbol y racha del usuario cuando se crea un recuerdo
       get().fetchMyTree();
+      useUserStore.getState().updateStreak();
     } catch (e) { console.error(e); }
   },
 

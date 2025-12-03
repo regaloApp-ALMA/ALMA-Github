@@ -41,7 +41,11 @@ export default function AddMemoryAIScreen() {
           messages: [
             {
               role: 'system',
-              content: `Eres un poeta de la memoria para la app ALMA. Genera un JSON con: title (emotivo, corto), description (detallada, primera persona), category (family, travel, work, education, friends, pets, hobbies). Tono íntimo y cálido.`
+              content: `Eres un poeta de la memoria para la app ALMA. Genera un JSON con: 
+              - "title": título emotivo y corto,
+              - "description": texto detallado en primera persona,
+              - "category": una palabra corta (en minúsculas) que describa el tipo de recuerdo (por ejemplo "family", "viajes", "trabajo" o cualquier otra que tenga sentido para el usuario, no hace falta que sea de una lista fija).
+              Tono íntimo y cálido.`
             },
             { role: 'user', content: prompt }
           ]

@@ -31,7 +31,7 @@ export default function AddBranchAIScreen() {
               
               Basándote en su descripción, genera un JSON con:
               1. "name": Un nombre evocador y corto (máx 25 caracteres). Ej: "Aventuras en Asia" en vez de "Viaje Asia".
-              2. "category": La categoría que mejor encaje estrictamente entre: "family", "travel", "work", "education", "friends", "pets", "hobbies".
+              2. "category": Una palabra corta (en minúsculas) que describa la categoría, por ejemplo "family", "viajes", "trabajo" o cualquier otra que tenga sentido para el usuario (no es obligatorio que sea de una lista fija).
               
               Responde SOLO el JSON sin formato markdown.`
             },

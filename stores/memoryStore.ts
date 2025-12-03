@@ -23,19 +23,17 @@ export const useMemoryStore = create<MemoryState>((set) => ({
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) return;
 
-      // 1. RECUERDOS DE HOY (Efemérides)
-      // Como SQL es complejo para filtrar "mismo día y mes" en timestamp, 
-      // por simplicidad para el MVP traeremos los últimos 5 recuerdos propios.
-      // (Para hacerlo perfecto necesitaríamos una función SQL "month()" y "day()")
-      const { data: memories } = await supabase
-        .from('fruits')
-        .select('id, title, description, date, created_at')
-        .order('created_at', { ascending: false })
-        .limit(3);
+      // 1. RECUERDOS CERCANOS A HOY (±7 días) DEL USUARIO Y SU FAMILIA
+      // ----------------------------------------------------------------
+      // a) Obtener mis árboles
+      const { data: myTrees } = await supabase
+        .from('trees')
+        .select('id')
+        .eq('owner_id', session.user.id);
 
-      // 2. ACTIVIDAD RECIENTE (De Familiares)
-      // Buscamos frutos creados por gente que está en mis 'family_connections'
-      // Primero obtenemos los IDs de mis familiares
+      const myTreeIds = myTrees?.map(t => t.id) || [];
+
+      // b) Obtener IDs de familiares conectados
       const { data: connections } = await supabase
         .from('family_connections')
         .select('relative_id')
@@ -43,6 +41,56 @@ export const useMemoryStore = create<MemoryState>((set) => ({
 
       const familyIds = connections?.map(c => c.relative_id) || [];
 
+      // c) Obtener árboles de mis familiares
+      let allTreeIds = [...myTreeIds];
+
+      if (familyIds.length > 0) {
+        const { data: familyTrees } = await supabase
+          .from('trees')
+          .select('id, owner_id')
+          .in('owner_id', familyIds);
+
+        const familyTreeIds = familyTrees?.map(t => t.id) || [];
+        allTreeIds = [...allTreeIds, ...familyTreeIds];
+      }
+
+      // d) Con todos los árboles (míos + familia), obtener sus ramas y frutos
+      let memories: any[] = [];
+
+      if (allTreeIds.length > 0) {
+        const { data: branches } = await supabase
+          .from('branches')
+          .select('id, tree_id')
+          .in('tree_id', allTreeIds);
+
+        const branchIds = branches?.map(b => b.id) || [];
+
+        if (branchIds.length > 0) {
+          const { data: fruits } = await supabase
+            .from('fruits')
+            .select('id, title, description, date, created_at, branch_id')
+            .in('branch_id', branchIds)
+            .order('date', { ascending: true });
+
+          const today = new Date();
+          const dayMs = 24 * 60 * 60 * 1000;
+
+          memories = (fruits || []).filter((f: any) => {
+            if (!f.date) return false;
+            const d = new Date(f.date);
+            // Comparación aproximada: diferencia absoluta en días (ignorando zona horaria fina)
+            const diffDays = Math.abs(
+              Math.floor((d.getTime() - today.getTime()) / dayMs)
+            );
+            return diffDays <= 7; // ventana de 1 semana antes / después
+          }).slice(0, 5); // máx. 5 eventos para el MVP
+        }
+      }
+
+      // 2. ACTIVIDAD RECIENTE (De Familiares)
+      // --------------------------------------
+      // Buscamos frutos creados por gente que está en mis 'family_connections'
+      // Primero obtenemos los IDs de mis familiares
       let activities: any[] = [];
 
       if (familyIds.length > 0) {
@@ -94,9 +142,15 @@ export const useMemoryStore = create<MemoryState>((set) => ({
       }
 
       set({
-        todayMemories: memories || [],
+        todayMemories: (memories || []).map((m: any) => ({
+          id: m.id,
+          title: m.title,
+          description: m.description,
+          date: m.date,
+          type: 'memory' as const,
+        })),
         recentActivities: activities,
-        isLoading: false
+        isLoading: false,
       });
 
     } catch (error: any) {

@@ -83,17 +83,40 @@ export const useUserStore = create<UserState>((set, get) => ({
       const { data: { session } } = await supabase.auth.getSession();
 
       if (session) {
-        const { data: profile } = await supabase
+        // Intentamos cargar el perfil; si no existe (usuarios antiguos o fallo de trigger),
+        // lo creamos en cliente para mantener consistencia.
+        let { data: profile, error } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', session.user.id)
           .single();
 
+        if (error && error.code === 'PGRST116') {
+          // No existe perfil: lo creamos manualmente respetando RLS (auth.uid() = id)
+          const insertRes = await supabase
+            .from('profiles')
+            .insert({
+              id: session.user.id,
+              email: session.user.email,
+              name: (session.user.user_metadata as any)?.name || session.user.email?.split('@')[0] || 'Usuario',
+              avatar_url: (session.user.user_metadata as any)?.avatar_url || null,
+            })
+            .select('*')
+            .single();
+
+          if (!insertRes.error) {
+            profile = insertRes.data;
+          }
+        }
+
         set({
-          session,
-          user: profile ? { ...profile, email: session.user.email } as UserType : null,
-          isAuthenticated: true
+          session: profile ? session : null,
+          user: profile ? { ...(profile as any), email: session.user.email } as UserType : null,
+          isAuthenticated: !!profile,
         });
+      } else {
+        // No hay sesión: nos aseguramos de limpiar estado
+        set({ session: null, user: null, isAuthenticated: false });
       }
     } catch (error) {
       console.error('Error inicializando:', error);
@@ -103,16 +126,33 @@ export const useUserStore = create<UserState>((set, get) => ({
       if (event === 'SIGNED_OUT' || !session) {
         set({ user: null, session: null, isAuthenticated: false });
       } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        const { data: profile } = await supabase
+        let { data: profile, error } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', session.user.id)
           .single();
 
+        if (error && error.code === 'PGRST116') {
+          const insertRes = await supabase
+            .from('profiles')
+            .insert({
+              id: session.user.id,
+              email: session.user.email,
+              name: (session.user.user_metadata as any)?.name || session.user.email?.split('@')[0] || 'Usuario',
+              avatar_url: (session.user.user_metadata as any)?.avatar_url || null,
+            })
+            .select('*')
+            .single();
+
+          if (!insertRes.error) {
+            profile = insertRes.data;
+          }
+        }
+
         set({
-          session,
-          user: profile ? { ...profile, email: session.user.email } as UserType : null,
-          isAuthenticated: true
+          session: profile ? session : null,
+          user: profile ? { ...(profile as any), email: session.user.email } as UserType : null,
+          isAuthenticated: !!profile,
         });
       }
     });

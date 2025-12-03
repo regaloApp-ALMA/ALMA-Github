@@ -91,7 +91,7 @@ export default function ProfileSettingsScreen() {
           birth_date: birthDate.trim() || null,
           bio: bio.trim(),
           avatar_url: avatarUrl, // Guardamos la URL nueva
-          updated_at: new Date().toISOString(),
+          // No es necesario tocar created_at; updated_at se actualiza en SQL con DEFAULT/trigger si lo usas
         })
         .eq('id', user?.id);
 

@@ -8,7 +8,7 @@ import { Database, Trash2, Download, Upload, Crown, Zap, Check } from 'lucide-re
 
 export default function StorageScreen() {
   const { theme } = useThemeStore();
-  const { tree } = useTreeStore();
+  const { tree, fetchMyTree } = useTreeStore();
   const router = useRouter();
   const isDarkMode = theme === 'dark';
   const [loading, setLoading] = useState(true);
@@ -22,6 +22,12 @@ export default function StorageScreen() {
 
   // Calcular uso real basado en el árbol
   useEffect(() => {
+    // Aseguramos tener el árbol cargado para poder contar fotos/vídeos
+    if (!tree) {
+      fetchMyTree();
+      return;
+    }
+
     if (tree) {
       // Filtramos frutos con media
       const fruitsWithMedia = tree.fruits.filter(f => f.mediaUrls && f.mediaUrls.length > 0);
