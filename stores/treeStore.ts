@@ -11,8 +11,16 @@ interface TreeState {
 
   fetchMyTree: (isRefresh?: boolean) => Promise<void>;
 
-  // Funciones de Ramas
-  addBranch: (branch: { name: string; categoryId: string; color: string }) => Promise<void>;
+  // CORRECCIÓN AQUÍ: Actualizamos la definición para aceptar 'position'
+  addBranch: (branch: {
+    name: string;
+    categoryId: string;
+    color: string;
+    description?: string;            // Opcional
+    position?: { x: number; y: number }; // Opcional (Esto arregla tu error)
+    isShared?: boolean;              // Opcional
+  }) => Promise<void>;
+
   deleteBranch: (branchId: string) => Promise<void>;
 
   // Funciones de Frutos
@@ -66,11 +74,11 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       const formattedBranches: BranchType[] = (branches || []).map((b: any) => ({
         id: b.id,
         name: b.name,
-        categoryId: b.category, // Mapeo importante: DB 'category' -> Type 'categoryId'
+        categoryId: b.category,
         color: b.color,
         createdAt: b.created_at,
         isShared: b.is_shared,
-        position: { x: 0, y: 0 }
+        position: b.position || { x: 0, y: 0 }
       }));
 
       // 3. Obtener Frutos
@@ -94,7 +102,8 @@ export const useTreeStore = create<TreeState>((set, get) => ({
           mediaUrls: f.media_urls || [],
           createdAt: f.created_at,
           isShared: f.is_shared || false,
-          position: { x: 0, y: 0 }
+          position: f.position || { x: 0, y: 0 },
+          location: f.location
         }));
       }
 
@@ -139,7 +148,8 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         name: branch.name,
         category: branch.categoryId,
         color: branch.color,
-        is_shared: false
+        is_shared: branch.isShared || false,
+        position: branch.position || { x: 0, y: 0 } // Ahora sí procesamos la posición
       });
       if (error) throw error;
       get().fetchMyTree();
@@ -149,27 +159,22 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   deleteBranch: async (branchId) => {
     const previousTree = get().tree;
 
-    // 1. UI Instantánea: Borramos la rama Y sus frutos visualmente
     if (previousTree) {
       set({
         tree: {
           ...previousTree,
           branches: previousTree.branches.filter(b => b.id !== branchId),
-          // Importante: filtramos también los frutos visualmente para actualizar contadores
           fruits: previousTree.fruits.filter(f => f.branchId !== branchId)
         }
       });
     }
 
     try {
-      // 2. Borrado en DB
-      // Como configuraste "CASCADE" en Supabase, borrar la rama borra sus frutos automáticamente
       const { error } = await supabase.from('branches').delete().eq('id', branchId);
       if (error) throw error;
 
     } catch (error: any) {
       console.error('Error deleting branch:', error);
-      // Si falla, restauramos
       set({ tree: previousTree, error: 'No se pudo borrar la rama.' });
       get().fetchMyTree();
     }
@@ -183,20 +188,19 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         description: fruit.description,
         media_urls: fruit.mediaUrls,
         is_shared: fruit.isShared,
-        date: new Date().toISOString()
+        date: new Date().toISOString(),
+        position: fruit.position || { x: 0, y: 0 },
+        location: fruit.location
       });
       if (error) throw error;
-      // Actualizamos árbol y racha del usuario cuando se crea un recuerdo
       get().fetchMyTree();
       useUserStore.getState().updateStreak();
     } catch (e) { console.error(e); }
   },
 
-  // --- AQUÍ ESTÁ LA SOLUCIÓN AL BUG DE BORRADO DE FRUTOS ---
   deleteFruit: async (fruitId: string) => {
     const previousTree = get().tree;
 
-    // 1. UI Instantánea: Filtramos SOLO el fruto que coincide con el ID
     if (previousTree) {
       set({
         tree: {
@@ -207,16 +211,13 @@ export const useTreeStore = create<TreeState>((set, get) => ({
     }
 
     try {
-      // 2. Borrado en DB: Usamos .eq('id', fruitId) para ser quirúrgicos
       const { error } = await supabase.from('fruits').delete().eq('id', fruitId);
-
       if (error) throw error;
 
     } catch (error: any) {
       console.error('Error deleting fruit:', error);
-      // Si falla, restauramos la vista anterior
       set({ tree: previousTree, error: 'No se pudo borrar el recuerdo.' });
-      get().fetchMyTree(); // Recargamos para asegurar consistencia
+      get().fetchMyTree();
     }
   }
 }));

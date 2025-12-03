@@ -5,15 +5,32 @@ import { useTreeStore } from '@/stores/treeStore';
 import colors from '@/constants/colors';
 import categories from '@/constants/categories';
 import { useThemeStore } from '@/stores/themeStore';
-import { Edit3, Plus, X } from 'lucide-react-native';
+import { X } from 'lucide-react-native';
 
-// Sugerencias
 const branchSuggestions = [
   { id: 'deportes', name: 'Deportes', description: 'Deportes que has practicado' },
   { id: 'viajes', name: 'Viajes', description: 'Lugares que has visitado' },
   { id: 'familia', name: 'Familia', description: 'Momentos familiares' },
   { id: 'hobbies', name: 'Hobbies', description: 'Pasatiempos favoritos' },
 ];
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background, padding: 20 },
+  containerDark: { backgroundColor: '#121212' },
+  formGroup: { marginBottom: 24 },
+  label: { fontSize: 16, fontWeight: 'bold', color: colors.text, marginBottom: 8 },
+  labelDark: { color: '#FFF' },
+  input: { backgroundColor: '#FFF', borderRadius: 12, padding: 16, fontSize: 16, borderWidth: 1, borderColor: colors.border },
+  inputDark: { backgroundColor: '#1E1E1E', borderColor: '#333', color: '#FFF' },
+  suggestionsContainer: { backgroundColor: '#FFF', borderRadius: 8, marginTop: 8, padding: 12, borderWidth: 1, borderColor: colors.border, elevation: 2 },
+  suggestionsContainerDark: { backgroundColor: '#222', borderColor: '#444' },
+  categoriesContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  categoryItem: { borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingVertical: 8, paddingHorizontal: 16, backgroundColor: '#FFF' },
+  categoryText: { fontSize: 14, color: colors.text },
+  createButton: { backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 20 },
+  createButtonDisabled: { backgroundColor: colors.gray },
+  createButtonText: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
+});
 
 export default function AddBranchScreen() {
   const [name, setName] = useState('');
@@ -48,13 +65,11 @@ export default function AddBranchScreen() {
       name: name.trim(),
       categoryId: finalCategoryId,
       color: finalColor,
-      isShared: false,
-      position: { x: 0, y: 0 },
+      position: { x: 0, y: 0 }
     });
 
-    // Navegar directamente al árbol y cerrar esta pantalla
     if (router.canGoBack()) {
-      router.dismissAll(); // Cierra modales
+      router.dismissAll();
     }
     router.replace('/(tabs)/tree');
   };
@@ -128,21 +143,3 @@ export default function AddBranchScreen() {
     </TouchableWithoutFeedback>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, padding: 20 },
-  containerDark: { backgroundColor: '#121212' },
-  formGroup: { marginBottom: 24 },
-  label: { fontSize: 16, fontWeight: 'bold', color: colors.text, marginBottom: 8 },
-  labelDark: { color: '#FFF' },
-  input: { backgroundColor: '#FFF', borderRadius: 12, padding: 16, fontSize: 16, borderWidth: 1, borderColor: colors.border },
-  inputDark: { backgroundColor: '#1E1E1E', borderColor: '#333', color: '#FFF' },
-  suggestionsContainer: { backgroundColor: '#FFF', borderRadius: 8, marginTop: 8, padding: 12, borderWidth: 1, borderColor: colors.border, elevation: 2 },
-  suggestionsContainerDark: { backgroundColor: '#222', borderColor: '#444' },
-  categoriesContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  categoryItem: { borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingVertical: 8, paddingHorizontal: 16, backgroundColor: '#FFF' },
-  categoryText: { fontSize: 14, color: colors.text },
-  createButton: { backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 20 },
-  createButtonDisabled: { backgroundColor: colors.gray },
-  createButtonText: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
-});

@@ -1,11 +1,25 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useTreeStore } from '@/stores/treeStore';
 import colors from '@/constants/colors';
 import categories from '@/constants/categories';
 import { Sparkles, Send } from 'lucide-react-native';
 import { useThemeStore } from '@/stores/themeStore';
+
+const styles = StyleSheet.create({
+  container: { flex: 1, padding: 20, backgroundColor: colors.background },
+  containerDark: { backgroundColor: '#121212' },
+  header: { alignItems: 'center', marginBottom: 30, marginTop: 20 },
+  title: { fontSize: 24, fontWeight: 'bold', color: colors.text, marginTop: 16, marginBottom: 8 },
+  textWhite: { color: '#FFF' },
+  subtitle: { fontSize: 16, color: colors.textLight, textAlign: 'center', lineHeight: 22 },
+  inputContainer: { marginTop: 10 },
+  input: { backgroundColor: '#FFF', padding: 20, borderRadius: 16, height: 180, textAlignVertical: 'top', fontSize: 16, shadowColor: "#000", shadowOpacity: 0.05, elevation: 2 },
+  inputDark: { backgroundColor: '#2C2C2C', color: '#FFF' },
+  button: { backgroundColor: colors.primary, padding: 18, borderRadius: 12, alignItems: 'center', marginTop: 24, shadowColor: colors.primary, shadowOpacity: 0.3, elevation: 4 },
+  disabled: { opacity: 0.7 }
+});
 
 export default function AddBranchAIScreen() {
   const [prompt, setPrompt] = useState('');
@@ -27,13 +41,11 @@ export default function AddBranchAIScreen() {
           messages: [
             {
               role: 'system',
-              content: `Eres un arquitecto de memorias para la app ALMA. Tu trabajo es crear la "Rama" perfecta para organizar los recuerdos del usuario.
-              
-              Basándote en su descripción, genera un JSON con:
-              1. "name": Un nombre evocador y corto (máx 25 caracteres). Ej: "Aventuras en Asia" en vez de "Viaje Asia".
-              2. "category": Una palabra corta (en minúsculas) que describa la categoría, por ejemplo "family", "viajes", "trabajo" o cualquier otra que tenga sentido para el usuario (no es obligatorio que sea de una lista fija).
-              
-              Responde SOLO el JSON sin formato markdown.`
+              content: `Eres un arquitecto de memorias para la app ALMA. 
+              Basándote en la descripción, genera un JSON con:
+              1. "name": Nombre corto (máx 25 chars).
+              2. "category": Categoría (ej: family, viajes, hobbies).
+              Responde SOLO el JSON.`
             },
             { role: 'user', content: prompt }
           ]
@@ -41,9 +53,7 @@ export default function AddBranchAIScreen() {
       });
 
       const data = await response.json();
-
       let jsonStr = data.completion;
-      // Limpieza robusta de JSON
       if (jsonStr.includes('```json')) {
         jsonStr = jsonStr.split('```json')[1].split('```')[0];
       } else if (jsonStr.includes('```')) {
@@ -51,15 +61,12 @@ export default function AddBranchAIScreen() {
       }
 
       const result = JSON.parse(jsonStr.trim());
-
-      // Asignar color basado en categoría automáticamente
       const catObj = categories.find(c => c.id === result.category) || categories.find(c => c.id === 'hobbies')!;
 
       await addBranch({
         name: result.name,
         categoryId: result.category || 'hobbies',
         color: catObj.color,
-        isShared: false,
         position: { x: 0, y: 0 }
       });
 
@@ -67,7 +74,7 @@ export default function AddBranchAIScreen() {
       router.replace('/(tabs)/tree');
 
     } catch (error) {
-      Alert.alert('Error', 'La IA no pudo entender la solicitud. Intenta ser más específico.');
+      Alert.alert('Error', 'No se pudo crear la rama. Inténtalo de nuevo.');
       console.error(error);
     } finally {
       setIsGenerating(false);
@@ -76,7 +83,13 @@ export default function AddBranchAIScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Diseñador de Ramas', headerStyle: { backgroundColor: isDarkMode ? '#1E1E1E' : colors.primary }, headerTintColor: '#FFF' }} />
+      <Stack.Screen
+        options={{
+          title: 'Diseñador de Ramas',
+          headerStyle: { backgroundColor: isDarkMode ? '#1E1E1E' : colors.primary },
+          headerTintColor: '#FFF'
+        }}
+      />
       <View style={[styles.container, isDarkMode && styles.containerDark]}>
         <View style={styles.header}>
           <Sparkles size={48} color={colors.primary} />
@@ -110,17 +123,3 @@ export default function AddBranchAIScreen() {
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20, backgroundColor: colors.background },
-  containerDark: { backgroundColor: '#121212' },
-  header: { alignItems: 'center', marginBottom: 30, marginTop: 20 },
-  title: { fontSize: 24, fontWeight: 'bold', color: colors.text, marginTop: 16, marginBottom: 8 },
-  textWhite: { color: '#FFF' },
-  subtitle: { fontSize: 16, color: colors.textLight, textAlign: 'center', lineHeight: 22 },
-  inputContainer: { marginTop: 10 },
-  input: { backgroundColor: '#FFF', padding: 20, borderRadius: 16, height: 180, textAlignVertical: 'top', fontSize: 16, shadowColor: "#000", shadowOpacity: 0.05, elevation: 2 },
-  inputDark: { backgroundColor: '#2C2C2C', color: '#FFF' },
-  button: { backgroundColor: colors.primary, padding: 18, borderRadius: 12, alignItems: 'center', marginTop: 24, shadowColor: colors.primary, shadowOpacity: 0.3, elevation: 4 },
-  disabled: { opacity: 0.7 }
-});
