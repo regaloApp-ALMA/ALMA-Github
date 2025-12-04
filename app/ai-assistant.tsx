@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { Send } from 'lucide-react-native';
 import colors from '@/constants/colors';
 import { useThemeStore } from '@/stores/themeStore';
@@ -29,9 +29,9 @@ export default function AIAssistant() {
         const catObj = categories.find(c => c.id === command.data.category) || categories[0];
         await addBranch({
           name: command.data.name,
-          // Permitimos categorías libres: si no coincide, usamos 'hobbies' como fallback.
           categoryId: command.data.category || 'hobbies',
           color: catObj.color,
+          position: { x: 0, y: 0 }, // Campo requerido
         } as any);
         return null;
       }
@@ -55,19 +55,20 @@ export default function AIAssistant() {
 
         if (!targetBranchId) return "Necesito que crees una rama primero para poder guardar este recuerdo.";
 
+        // CORRECCIÓN CRÍTICA: Asegurar TODOS los campos requeridos
         await addFruit({
           title: command.data.title,
           description: command.data.description,
           branchId: targetBranchId,
-          mediaUrls: [],
+          mediaUrls: [], // Array vacío por defecto
           isShared: false,
-          location: { name: '' },
-          position: { x: 0, y: 0 }
+          location: { name: '' }, // Objeto location requerido
+          position: { x: 0, y: 0 } // Objeto position requerido
         } as any);
         return null;
       }
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      console.error('Error executing AI command:', e);
       return "Tuve un pequeño problema técnico al guardar eso. ¿Podemos intentarlo de nuevo?";
     }
     return null;
@@ -97,10 +98,20 @@ export default function AIAssistant() {
               RAMAS EXISTENTES DEL USUARIO: ${existingBranches}
               
               INSTRUCCIONES CLAVE:
-              1. SÉ AMABLE: Responde siempre con calidez, comentando lo que te cuentan. No seas un robot.
-              2. DETECTA INTENCIONES: Si el usuario te cuenta un recuerdo o quiere crear una rama, SOLO CUANDO HAYAS REUNIDO SUFICIENTE CONTEXTO propón UN ÚNICO resumen elaborado (rama o recuerdo) para guardar.
-              3. BLOQUE JSON: al FINAL de tu respuesta genera como mucho UN SOLO bloque JSON con la propuesta (no uno por mensaje). No guardes nada directamente, solo propones.
-              4. USA LAS RAMAS REALES: Si te piden guardar un recuerdo, intenta asignarlo a una de las "RAMAS EXISTENTES" que mejor encaje. Si no encaja ninguna, usa la más lógica o sugiere crear una nueva.
+              1. SÉ AMABLE Y PROFUNDO: Responde siempre con calidez, comentando lo que te cuentan. No seas un robot. Haz preguntas que inviten a la reflexión.
+              
+              2. DETECTA INTENCIONES: Si el usuario te cuenta un recuerdo o quiere crear una rama, SOLO CUANDO HAYAS REUNIDO SUFICIENTE CONTEXTO (después de varias interacciones) propón UN ÚNICO resumen elaborado (rama o recuerdo) para guardar.
+              
+              3. DESCRIPCIONES EXTENSAS Y RICAS: Cuando generes un recuerdo (fruto), NO hagas resúmenes de una línea. Desarrolla la historia con al menos 3-4 frases completas, describiendo:
+                 - Sensaciones y emociones que sintió el usuario
+                 - El ambiente y contexto del momento
+                 - Detalles específicos que mencionó
+                 - El significado emocional del recuerdo
+              Ejemplo de descripción rica: "Era una tarde de verano cuando todo cambió. El sol se filtraba entre las hojas mientras caminábamos por ese sendero que solo conocíamos nosotros. Recuerdo cómo tu risa resonaba en el aire, mezclándose con el canto de los pájaros. En ese momento, supe que había encontrado algo especial, algo que quería conservar para siempre. La sensación de paz y conexión que sentí entonces sigue viva en mi memoria, como un tesoro que guardo con cuidado."
+              
+              4. BLOQUE JSON: al FINAL de tu respuesta genera como mucho UN SOLO bloque JSON con la propuesta (no uno por mensaje). No guardes nada directamente, solo propones.
+              
+              5. USA LAS RAMAS REALES: Si te piden guardar un recuerdo, intenta asignarlo a una de las "RAMAS EXISTENTES" que mejor encaje. Si no encaja ninguna, usa la más lógica o sugiere crear una nueva.
 
               FORMATO JSON (Ponlo SOLO si hay que guardar algo, al final del texto):
               
@@ -108,7 +119,7 @@ export default function AIAssistant() {
               @@JSON@@{"action": "create_branch", "data": { "name": "Nombre", "category": "family"|"travel"|"work"|"hobbies" }}@@ENDJSON@@
               
               Para RECUERDOS (Frutos):
-              @@JSON@@{"action": "create_fruit", "data": { "title": "Título Poético", "description": "Resumen emotivo", "branchName": "Nombre EXACTO de una rama existente o la más parecida" }}@@ENDJSON@@
+              @@JSON@@{"action": "create_fruit", "data": { "title": "Título Poético y Emotivo", "description": "Descripción EXTENSA de 3-4 frases con detalles, sensaciones y emociones", "branchName": "Nombre EXACTO de una rama existente o la más parecida" }}@@ENDJSON@@
               `
             },
             ...messages.filter(m => m.role !== 'system').slice(-8),
@@ -147,7 +158,11 @@ export default function AIAssistant() {
   };
 
   return (
-    <View style={[styles.container, isDarkMode && styles.containerDark]}>
+    <KeyboardAvoidingView
+      style={[styles.container, isDarkMode && styles.containerDark]}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+    >
       <ScrollView
         style={styles.messagesContainer}
         ref={scrollViewRef}
@@ -258,7 +273,7 @@ export default function AIAssistant() {
           <Send size={20} color="#FFF" />
         </TouchableOpacity>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

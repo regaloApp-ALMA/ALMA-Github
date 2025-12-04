@@ -45,9 +45,9 @@ export default function ProfileSettingsScreen() {
   // FUNCIÓN PARA CAMBIAR FOTO
   const handlePickImage = async () => {
     try {
+      // SOLUCIÓN: Usar MediaTypeOptions con fallback seguro
       const result = await ImagePicker.launchImageLibraryAsync({
-        // CAMBIO AQUÍ: Usar MediaType.Images en lugar de MediaTypeOptions
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ImagePicker.MediaTypeOptions?.Images || 'Images' as any,
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.5,
@@ -67,6 +67,7 @@ export default function ProfileSettingsScreen() {
         }
       }
     } catch (error) {
+      console.error('Error picking image:', error);
       Alert.alert("Error", "Error al seleccionar imagen");
     } finally {
       setIsUploading(false);

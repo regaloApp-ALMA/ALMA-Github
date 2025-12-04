@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useMemoryStore } from '@/stores/memoryStore';
 import { useUserStore } from '@/stores/userStore';
+import { useTreeStore } from '@/stores/treeStore';
 import ActivityItem from '@/components/ActivityItem';
 import colors from '@/constants/colors';
 import { useRouter } from 'expo-router';
@@ -19,11 +20,19 @@ const MEMORY_PROMPTS = [
   { id: 6, category: 'Logros', text: 'El día que recibiste tu primer sueldo.', icon: 'briefcase' },
   { id: 7, category: 'Amor', text: 'Tu primera cita con tu pareja actual.', icon: 'heart' },
   { id: 8, category: 'Música', text: 'El primer concierto al que fuiste.', icon: 'music' },
+  { id: 9, category: 'Vida', text: 'Línea de vida en 10 fotos: Describe tu vida solo con imágenes.', icon: 'image' },
+  { id: 10, category: 'Reflexión', text: 'Entrevista al pasado: ¿Qué le preguntarías a tu yo de hace 10 años?', icon: 'clock' },
+  { id: 11, category: 'Cocina', text: 'Capsula culinaria: La receta que quieres que hereden tus nietos.', icon: 'utensils' },
+  { id: 12, category: 'Música', text: 'Soundtrack vital: 3 canciones que definen tu adolescencia.', icon: 'music' },
+  { id: 13, category: 'Familia', text: 'El momento más divertido en una reunión familiar.', icon: 'users' },
+  { id: 14, category: 'Aprendizaje', text: 'La lección más importante que aprendiste de un error.', icon: 'book' },
+  { id: 15, category: 'Aventura', text: 'Esa vez que hiciste algo que nunca pensaste que harías.', icon: 'map' },
 ];
 
 export default function HomeScreen() {
   const { recentActivities, todayMemories, fetchHomeData, isLoading } = useMemoryStore();
   const { user } = useUserStore();
+  const { fetchMyTree } = useTreeStore();
   const router = useRouter();
   const { theme } = useThemeStore();
   const isDarkMode = theme === 'dark';
@@ -33,6 +42,7 @@ export default function HomeScreen() {
 
   useEffect(() => {
     fetchHomeData();
+    fetchMyTree(); // Asegurar que el árbol esté cargado
     refreshIdeas();
   }, []);
 
@@ -57,7 +67,7 @@ export default function HomeScreen() {
         contentContainerStyle={{ paddingBottom: 100 }}
       >
         {/* HEADER */}
-        <View style={styles.header}>
+        <View style={[styles.header, isDarkMode && styles.headerDark]}>
           <View style={styles.headerTopRow}>
             <View>
               <Text style={[styles.greeting, isDarkMode && styles.greetingDark]}>
@@ -79,8 +89,8 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        {/* ACCIONES RÁPIDAS (MANTENIDAS) */}
-        <View style={[styles.quickActions, isDarkMode && styles.quickActionsDark]}>
+        {/* ACCIONES RÁPIDAS (MEJORADAS CON TARJETA) */}
+        <View style={[styles.quickActionsCard, isDarkMode && styles.quickActionsCardDark]}>
           <TouchableOpacity style={styles.actionItem} onPress={navigateToTree}>
             <View style={[styles.actionIcon, isDarkMode && styles.actionIconDark]}>
               <Trees size={24} color={colors.primary} />
@@ -229,8 +239,9 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F5F7FA' },
   containerDark: { backgroundColor: '#121212' },
+  headerDark: { backgroundColor: '#121212' },
 
-  header: { padding: 24, paddingTop: 50, backgroundColor: colors.background, paddingBottom: 10 },
+  header: { padding: 24, paddingTop: 50, backgroundColor: '#F5F7FA', paddingBottom: 10 },
   headerTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   greeting: { fontSize: 26, fontWeight: 'bold', color: colors.text, marginBottom: 4 },
   greetingDark: { color: colors.white },
@@ -241,9 +252,26 @@ const styles = StyleSheet.create({
   streakBadgeDark: { backgroundColor: '#333' },
   streakText: { fontSize: 16, fontWeight: 'bold', color: colors.text },
 
-  // ACCIONES RÁPIDAS
-  quickActions: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 30, marginTop: 10 },
-  quickActionsDark: {},
+  // ACCIONES RÁPIDAS (MEJORADAS)
+  quickActionsCard: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    marginHorizontal: 20,
+    marginBottom: 30,
+    marginTop: 10,
+    backgroundColor: '#FFF',
+    borderRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  quickActionsCardDark: {
+    backgroundColor: '#1E1E1E',
+  },
   actionItem: { alignItems: 'center', width: 70 },
   actionIcon: { width: 56, height: 56, borderRadius: 28, backgroundColor: colors.white, alignItems: 'center', justifyContent: 'center', marginBottom: 8, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4, elevation: 3 },
   actionIconDark: { backgroundColor: '#1E1E1E' },

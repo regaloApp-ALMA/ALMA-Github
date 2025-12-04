@@ -71,7 +71,7 @@ export default function AddBranchAIScreen() {
       });
 
       Alert.alert('¡Rama Creada!', `Se ha añadido "${result.name}" a tu árbol.`);
-      router.replace('/(tabs)/tree');
+      router.push('/(tabs)/tree');
 
     } catch (error) {
       Alert.alert('Error', 'No se pudo crear la rama. Inténtalo de nuevo.');

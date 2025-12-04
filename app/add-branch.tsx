@@ -69,9 +69,10 @@ export default function AddBranchScreen() {
     });
 
     if (router.canGoBack()) {
-      router.dismissAll();
+      router.back();
+    } else {
+      router.push('/(tabs)/tree');
     }
-    router.replace('/(tabs)/tree');
   };
 
   return (

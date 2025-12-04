@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Image, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Image, ActivityIndicator, Platform } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useTreeStore } from '@/stores/treeStore';
 import colors from '@/constants/colors';
 import { useThemeStore } from '@/stores/themeStore';
-import { Image as ImageIcon } from 'lucide-react-native';
+import { Image as ImageIcon, X, Video } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadMedia } from '@/lib/storageHelper';
 import { useUserStore } from '@/stores/userStore';
@@ -20,7 +20,7 @@ export default function AddMemoryManualScreen() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [selectedBranch, setSelectedBranch] = useState(branchId || '');
-  const [mediaUrl, setMediaUrl] = useState('');
+  const [mediaUrls, setMediaUrls] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -31,22 +31,50 @@ export default function AddMemoryManualScreen() {
     }
   }, [tree]);
 
-  const handlePickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.5,
-    });
+  const handlePickMedia = async () => {
+    try {
+      // SOLUCIÓN: Configuración simplificada sin videoExportPreset (causa errores de casting)
+      const pickerOptions: ImagePicker.ImagePickerOptions = {
+        mediaTypes: ImagePicker.MediaTypeOptions?.All || 'All' as any,
+        allowsEditing: false,
+        allowsMultipleSelection: true,
+        quality: 0.7,
+        // COMPRESIÓN DE VÍDEO NATIVA (solo videoQuality, sin videoExportPreset)
+        ...(ImagePicker.VideoQuality && {
+          videoQuality: ImagePicker.VideoQuality.Medium,
+        }),
+      };
 
-    if (!result.canceled && user?.id) {
-      setIsUploading(true);
-      try {
-        const url = await uploadMedia(result.assets[0].uri, user.id, 'memories');
-        if (url) setMediaUrl(url);
-      } finally {
-        setIsUploading(false);
+      const result = await ImagePicker.launchImageLibraryAsync(pickerOptions);
+
+      if (!result.canceled && user?.id && result.assets) {
+        setIsUploading(true);
+        try {
+          // Subir todos los archivos seleccionados
+          const uploadPromises = result.assets.map(asset => 
+            uploadMedia(asset.uri, user.id, 'memories')
+          );
+          const uploadedUrls = await Promise.all(uploadPromises);
+          const validUrls = uploadedUrls.filter(url => url !== null) as string[];
+          setMediaUrls(prev => [...prev, ...validUrls]);
+        } catch (error) {
+          Alert.alert('Error', 'No se pudieron subir algunos archivos');
+        } finally {
+          setIsUploading(false);
+        }
       }
+    } catch (error: any) {
+      console.error('Error picking media:', error);
+      Alert.alert('Error', 'No se pudo abrir la galería. ' + (error.message || ''));
     }
+  };
+
+  const removeMedia = (index: number) => {
+    setMediaUrls(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const isVideoUrl = (url: string) => {
+    return url.includes('.mp4') || url.includes('.mov') || url.includes('video') || url.includes('.m4v');
   };
 
   const handleSave = async () => {
@@ -57,19 +85,17 @@ export default function AddMemoryManualScreen() {
 
     setIsSaving(true);
     try {
-      // SOLUCIÓN AL ERROR: Ajustamos el objeto al tipo esperado o casteamos
       await addFruit({
         title: title.trim(),
         description: description.trim(),
         branchId: selectedBranch,
-        mediaUrls: mediaUrl ? [mediaUrl] : [],
+        mediaUrls: mediaUrls,
         isShared: false,
-        // Pasamos location y position aunque sean opcionales
         location: { name: '' },
         position: { x: 0, y: 0 }
       } as any);
 
-      router.replace('/(tabs)/tree');
+      router.push('/(tabs)/tree');
     } catch (error: any) {
       Alert.alert('Error', error.message);
     } finally {
@@ -134,18 +160,52 @@ export default function AddMemoryManualScreen() {
         </View>
 
         <View style={styles.group}>
-          <Text style={[styles.label, isDarkMode && styles.textWhite]}>Foto</Text>
-          {mediaUrl ? (
-            <View>
-              <Image source={{ uri: mediaUrl }} style={styles.preview} />
-              <TouchableOpacity onPress={() => setMediaUrl('')} style={styles.removeBtn}><Text style={{ color: 'white' }}>X</Text></TouchableOpacity>
-            </View>
-          ) : (
-            <TouchableOpacity style={[styles.uploadBox, isDarkMode && styles.uploadBoxDark]} onPress={handlePickImage}>
-              {isUploading ? <ActivityIndicator /> : <ImageIcon size={32} color={colors.gray} />}
-              <Text style={{ color: colors.gray, marginTop: 8 }}>Toca para subir</Text>
-            </TouchableOpacity>
-          )}
+          <Text style={[styles.label, isDarkMode && styles.textWhite]}>
+            Fotos y Videos {mediaUrls.length > 0 && `(${mediaUrls.length})`}
+          </Text>
+          
+          {mediaUrls.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mediaScroll}>
+              {mediaUrls.map((url, index) => (
+                <View key={index} style={styles.mediaItem}>
+                  {isVideoUrl(url) ? (
+                    <View style={styles.videoContainer}>
+                      <Video size={24} color={colors.white} />
+                      <Text style={styles.videoLabel}>Video</Text>
+                    </View>
+                  ) : (
+                    <Image source={{ uri: url }} style={styles.mediaPreview} />
+                  )}
+                  <TouchableOpacity 
+                    style={styles.removeMediaBtn} 
+                    onPress={() => removeMedia(index)}
+                  >
+                    <X size={16} color="#FFF" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          ) : null}
+
+          <TouchableOpacity 
+            style={[styles.uploadBox, isDarkMode && styles.uploadBoxDark]} 
+            onPress={handlePickMedia}
+            disabled={isUploading}
+          >
+            {isUploading ? (
+              <ActivityIndicator color={colors.primary} />
+            ) : (
+              <>
+                <ImageIcon size={32} color={colors.gray} />
+                <Text style={[styles.uploadText, isDarkMode && styles.textLight]}>
+                  Toca para añadir fotos/videos
+                </Text>
+                <Text style={[styles.uploadHint, isDarkMode && styles.textLight]}>
+                  Puedes seleccionar múltiples archivos
+                </Text>
+              </>
+            )}
+          </TouchableOpacity>
         </View>
 
         <TouchableOpacity
@@ -167,16 +227,51 @@ const styles = StyleSheet.create({
   group: { marginBottom: 24 },
   label: { fontSize: 16, fontWeight: 'bold', marginBottom: 8, color: colors.text },
   textWhite: { color: '#FFF' },
+  textLight: { color: '#AAA' },
   input: { backgroundColor: '#FFF', borderRadius: 12, padding: 16, fontSize: 16, borderWidth: 1, borderColor: '#E0E0E0' },
   inputDark: { backgroundColor: '#2C2C2C', borderColor: '#444', color: '#FFF' },
   area: { height: 120, textAlignVertical: 'top' },
   chips: { flexDirection: 'row' },
   chip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#DDD', marginRight: 8, backgroundColor: '#FFF' },
   chipText: { fontWeight: '600', color: colors.text },
-  uploadBox: { height: 150, borderWidth: 2, borderColor: '#E0E0E0', borderStyle: 'dashed', borderRadius: 12, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFF' },
+  uploadBox: { 
+    height: 150, 
+    borderWidth: 2, 
+    borderColor: '#E0E0E0', 
+    borderStyle: 'dashed', 
+    borderRadius: 12, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    backgroundColor: '#FFF' 
+  },
   uploadBoxDark: { backgroundColor: '#2C2C2C', borderColor: '#444' },
-  preview: { width: '100%', height: 200, borderRadius: 12 },
-  removeBtn: { position: 'absolute', top: 10, right: 10, backgroundColor: 'rgba(0,0,0,0.6)', width: 30, height: 30, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
+  uploadText: { color: colors.gray, marginTop: 8, fontWeight: '600' },
+  uploadHint: { color: colors.gray, marginTop: 4, fontSize: 12 },
+  mediaScroll: { flexDirection: 'row', marginBottom: 12 },
+  mediaItem: { position: 'relative', marginRight: 12 },
+  mediaPreview: { width: 100, height: 100, borderRadius: 12 },
+  videoContainer: { 
+    width: 100, 
+    height: 100, 
+    borderRadius: 12, 
+    backgroundColor: '#333', 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
+  videoLabel: { color: colors.white, fontSize: 12, marginTop: 4 },
+  removeMediaBtn: { 
+    position: 'absolute', 
+    top: -8, 
+    right: -8, 
+    backgroundColor: colors.error, 
+    width: 24, 
+    height: 24, 
+    borderRadius: 12, 
+    justifyContent: 'center', 
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#FFF'
+  },
   saveButton: { backgroundColor: colors.primary, padding: 18, borderRadius: 12, alignItems: 'center', marginBottom: 40 },
   disabled: { opacity: 0.7 },
   saveText: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },

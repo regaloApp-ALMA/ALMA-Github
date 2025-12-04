@@ -7,6 +7,7 @@ import { Platform, StatusBar } from "react-native";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useUserStore } from "@/stores/userStore";
 import { useThemeStore } from "@/stores/themeStore";
+import { useTreeStore } from "@/stores/treeStore";
 import colors from "@/constants/colors";
 import { ErrorBoundary } from "./error-boundary";
 
@@ -23,7 +24,8 @@ export default function RootLayout() {
   const [loaded, error] = useFonts({
     ...FontAwesome.font,
   });
-  const { isAuthenticated, initialize } = useUserStore();
+  const { isAuthenticated, initialize, user } = useUserStore();
+  const { fetchMyTree } = useTreeStore();
   const segments = useSegments();
   const router = useRouter();
   const { theme } = useThemeStore();
@@ -38,6 +40,13 @@ export default function RootLayout() {
       initialize(); // Verificar si hay sesión guardada al arrancar
     }
   }, [loaded]);
+
+  // Cargar árbol cuando el usuario esté autenticado
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      fetchMyTree();
+    }
+  }, [isAuthenticated, user]);
 
   useEffect(() => {
     if (!loaded) return;

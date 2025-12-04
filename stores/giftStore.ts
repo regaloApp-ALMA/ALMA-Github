@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { GiftType } from '@/types/gift';
 import { useUserStore } from './userStore';
 import { useTreeStore } from './treeStore';
+import colors from '@/constants/colors';
 
 interface GiftState {
   gifts: GiftType[];
@@ -131,17 +132,88 @@ export const useGiftStore = create<GiftState>((set, get) => ({
           is_shared: true
         });
       } else if ((gift.type === 'fruit' || gift.type === 'timeCapsule') && myTree) {
-        // Para fruto necesitamos una rama. Si no viene especificada, la metemos en la primera que pillemos o creamos una "Regalos"
-        // Simplificación: Buscamos una rama cualquiera o "General"
-        const { data: branch } = await supabase.from('branches').select('id').eq('tree_id', myTree.id).limit(1).single();
+        // Para fruto necesitamos una rama. Intentamos usar la rama original si existe, sino creamos una "Regalos"
+        let targetBranchId: string | null = null;
 
-        if (branch) {
+        // Intentar encontrar la rama original si viene en contentData
+        if (gift.contentData?.branchId) {
+          const { data: originalBranch } = await supabase
+            .from('branches')
+            .select('id')
+            .eq('id', gift.contentData.branchId)
+            .single();
+          
+          if (originalBranch) {
+            // Verificar si esa rama pertenece a mi árbol o está compartida
+            const { data: myBranch } = await supabase
+              .from('branches')
+              .select('id')
+              .eq('tree_id', myTree.id)
+              .eq('id', gift.contentData.branchId)
+              .single();
+            
+            if (myBranch) {
+              targetBranchId = myBranch.id;
+            }
+          }
+        }
+
+        // Si no encontramos la rama original, buscar o crear una rama "Regalos"
+        if (!targetBranchId) {
+          let { data: giftsBranch } = await supabase
+            .from('branches')
+            .select('id')
+            .eq('tree_id', myTree.id)
+            .ilike('name', '%regalo%')
+            .limit(1)
+            .single();
+
+          if (!giftsBranch) {
+            // Crear rama "Regalos" si no existe
+            const { data: newBranch } = await supabase
+              .from('branches')
+              .insert({
+                tree_id: myTree.id,
+                name: 'Regalos',
+                category: 'friends',
+                color: colors.primary,
+                is_shared: false
+              })
+              .select('id')
+              .single();
+            
+            if (newBranch) {
+              targetBranchId = newBranch.id;
+            }
+          } else {
+            targetBranchId = giftsBranch.id;
+          }
+        }
+
+        // Si aún no tenemos rama, usar la primera disponible
+        if (!targetBranchId) {
+          const { data: firstBranch } = await supabase
+            .from('branches')
+            .select('id')
+            .eq('tree_id', myTree.id)
+            .limit(1)
+            .single();
+          
+          if (firstBranch) {
+            targetBranchId = firstBranch.id;
+          }
+        }
+
+        if (targetBranchId) {
           await supabase.from('fruits').insert({
-            branch_id: branch.id,
-            title: gift.contentData.title || 'Recuerdo regalado',
-            description: gift.contentData.description || gift.message,
+            branch_id: targetBranchId,
+            title: gift.contentData?.title || 'Recuerdo regalado',
+            description: gift.contentData?.description || gift.message,
             date: new Date().toISOString(),
-            media_urls: gift.contentData.mediaUrls || []
+            media_urls: gift.contentData?.mediaUrls || [],
+            is_shared: true, // Marcar como compartido
+            position: gift.contentData?.position || { x: 0, y: 0 },
+            location: gift.contentData?.location || { name: '' }
           });
         }
       }

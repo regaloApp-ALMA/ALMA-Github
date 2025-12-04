@@ -141,7 +141,10 @@ export const useTreeStore = create<TreeState>((set, get) => ({
 
   addBranch: async (branch) => {
     const currentTree = get().tree;
-    if (!currentTree) return;
+    if (!currentTree) {
+      console.error('No tree found when trying to add branch');
+      throw new Error('No se encontró el árbol. Por favor, recarga la app.');
+    }
     try {
       const { error } = await supabase.from('branches').insert({
         tree_id: currentTree.id,
@@ -149,11 +152,20 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         category: branch.categoryId,
         color: branch.color,
         is_shared: branch.isShared || false,
-        position: branch.position || { x: 0, y: 0 } // Ahora sí procesamos la posición
+        position: branch.position || { x: 0, y: 0 }
       });
-      if (error) throw error;
-      get().fetchMyTree();
-    } catch (e) { console.error(e); }
+      
+      if (error) {
+        console.error('Error inserting branch:', error);
+        throw error;
+      }
+      
+      await get().fetchMyTree();
+    } catch (e: any) {
+      console.error('Error in addBranch:', e);
+      set({ error: e.message || 'No se pudo crear la rama' });
+      throw e;
+    }
   },
 
   deleteBranch: async (branchId) => {
@@ -182,20 +194,33 @@ export const useTreeStore = create<TreeState>((set, get) => ({
 
   addFruit: async (fruit) => {
     try {
-      const { error } = await supabase.from('fruits').insert({
+      const insertData: any = {
         branch_id: fruit.branchId,
         title: fruit.title,
-        description: fruit.description,
-        media_urls: fruit.mediaUrls,
-        is_shared: fruit.isShared,
+        description: fruit.description || '',
+        media_urls: fruit.mediaUrls || [],
+        is_shared: fruit.isShared || false,
         date: new Date().toISOString(),
         position: fruit.position || { x: 0, y: 0 },
-        location: fruit.location
-      });
-      if (error) throw error;
-      get().fetchMyTree();
+      };
+      
+      // NOTA: El campo 'location' no existe en el schema SQL actual de 'fruits'
+      // Si necesitas guardar location, añádelo primero a Supabase o guárdalo en description/otro campo
+
+      const { error } = await supabase.from('fruits').insert(insertData);
+      
+      if (error) {
+        console.error('Error inserting fruit:', error);
+        throw error;
+      }
+      
+      await get().fetchMyTree();
       useUserStore.getState().updateStreak();
-    } catch (e) { console.error(e); }
+    } catch (e: any) {
+      console.error('Error in addFruit:', e);
+      set({ error: e.message || 'No se pudo crear el recuerdo' });
+      throw e;
+    }
   },
 
   deleteFruit: async (fruitId: string) => {

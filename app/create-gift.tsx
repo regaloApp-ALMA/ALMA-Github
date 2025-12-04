@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert, Switch, Image, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert, Switch, Image, ActivityIndicator, Platform } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useGiftStore } from '@/stores/giftStore';
 import { useTreeStore } from '@/stores/treeStore';
@@ -27,20 +27,38 @@ export default function CreateGiftScreen() {
   const isDarkMode = theme === 'dark';
 
   const handlePickImage = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
-      allowsEditing: true,
-      quality: 0.6,
-    });
+    try {
+      // SOLUCIÓN: Configuración simplificada sin videoExportPreset (causa errores de casting)
+      const pickerOptions: ImagePicker.ImagePickerOptions = {
+        mediaTypes: ImagePicker.MediaTypeOptions?.All || 'All' as any,
+        allowsEditing: true,
+        allowsMultipleSelection: true, // Permitir múltiples selecciones
+        quality: 0.6,
+        // COMPRESIÓN DE VÍDEO NATIVA (solo videoQuality, sin videoExportPreset)
+        ...(ImagePicker.VideoQuality && {
+          videoQuality: ImagePicker.VideoQuality.Medium,
+        }),
+      };
 
-    if (!result.canceled && user?.id) {
-      setIsUploading(true);
-      try {
-        const url = await uploadMedia(result.assets[0].uri, user.id, 'memories');
-        if (url) setMediaUrls([...mediaUrls, url]);
-      } finally {
-        setIsUploading(false);
+      const result = await ImagePicker.launchImageLibraryAsync(pickerOptions);
+
+      if (!result.canceled && user?.id && result.assets) {
+        setIsUploading(true);
+        try {
+          // Subir todos los archivos seleccionados
+          const uploadPromises = result.assets.map(asset => 
+            uploadMedia(asset.uri, user.id, 'memories')
+          );
+          const uploadedUrls = await Promise.all(uploadPromises);
+          const validUrls = uploadedUrls.filter(url => url !== null) as string[];
+          setMediaUrls(prev => [...prev, ...validUrls]);
+        } finally {
+          setIsUploading(false);
+        }
       }
+    } catch (error: any) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'No se pudo abrir la galería. ' + (error.message || ''));
     }
   };
 
@@ -64,7 +82,7 @@ export default function CreateGiftScreen() {
     setIsSaving(true);
     try {
       await createGift({
-        type: giftType === 'timeCapsule' ? 'timeCapsule' : 'fruit', // Usamos 'fruit' como regalo instantáneo
+        type: giftType === 'timeCapsule' ? 'timeCapsule' : 'fruit',
         recipientEmail: recipientEmail.trim(),
         message: description.trim(),
         content: {
