@@ -107,6 +107,7 @@ function RootLayoutNav({ theme }: { theme: 'light' | 'dark' }) {
       <Stack.Screen name="modal" options={{ presentation: "modal" }} />
       <Stack.Screen name="auth/login" options={{ headerShown: false }} />
       <Stack.Screen name="auth/register" options={{ headerShown: false }} />
+      <Stack.Screen name="auth/callback" options={{ headerShown: false }} />
     </Stack>
   );
 }

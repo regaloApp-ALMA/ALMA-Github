@@ -24,14 +24,53 @@ export default function RegisterScreen() {
     }
 
     try {
-      await register(name, email, password);
-      Alert.alert(
-        '¡Cuenta creada!',
-        'Te hemos enviado un correo de confirmación. Por favor verifica tu email para continuar.'
-      );
-      router.replace('/auth/login'); // Volver al login para que inicien sesión tras confirmar
+      const result = await register(name, email, password);
+      
+      // Si el registro fue exitoso y hay sesión (auto-login), redirigir a la app
+      if (result.session) {
+        Alert.alert(
+          '¡Cuenta creada!',
+          'Bienvenido a ALMA. Tu cuenta ha sido creada exitosamente.',
+          [
+            {
+              text: 'Continuar',
+              onPress: () => {
+                router.replace('/(tabs)');
+              }
+            }
+          ]
+        );
+      } else {
+        // Esto no debería pasar si la confirmación de email está desactivada,
+        // pero por si acaso mostramos un mensaje
+        Alert.alert(
+          'Registro exitoso',
+          'Tu cuenta ha sido creada. Por favor, inicia sesión.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                router.replace('/auth/login');
+              }
+            }
+          ]
+        );
+      }
     } catch (error: any) {
-      Alert.alert('Error de registro', error.message);
+      // Manejar errores específicos de manera amigable
+      let errorMessage = error.message || 'Error al crear la cuenta';
+      
+      if (error.message?.includes('already registered') || 
+          error.message?.includes('already exists') ||
+          error.message?.includes('User already registered')) {
+        errorMessage = 'Este email ya está registrado. Por favor, inicia sesión o usa otro email.';
+      } else if (error.message?.includes('Invalid email')) {
+        errorMessage = 'Por favor, introduce un email válido.';
+      } else if (error.message?.includes('Password')) {
+        errorMessage = 'La contraseña debe tener al menos 6 caracteres.';
+      }
+      
+      Alert.alert('Error de registro', errorMessage);
     }
   };
 

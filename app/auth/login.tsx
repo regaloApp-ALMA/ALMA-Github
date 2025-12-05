@@ -1,16 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ActivityIndicator, Alert, ScrollView, KeyboardAvoidingView, Platform } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import colors from '@/constants/colors';
 import { useUserStore } from '@/stores/userStore';
-// Icono de Google (puedes usar una imagen o texto simple si no tienes el icono a mano)
 import { Chrome } from 'lucide-react-native';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const { login, loginWithGoogle, isLoading } = useUserStore();
+  const { login, loginWithGoogle, isLoading, isAuthenticated } = useUserStore();
   const router = useRouter();
+
+  // Redirigir automáticamente si ya está autenticado
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.replace('/(tabs)');
+    }
+  }, [isAuthenticated]);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -20,10 +26,30 @@ export default function LoginScreen() {
 
     try {
       await login(email, password);
-      // El router.replace se maneja en el listener del store, pero por seguridad:
+      // El listener del store actualizará isAuthenticated, y el useEffect redirigirá
+      // Pero por seguridad, también redirigimos aquí
       router.replace('/(tabs)');
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'Credenciales incorrectas');
+      let errorMessage = error.message || 'Credenciales incorrectas';
+      
+      if (error.message?.includes('Invalid login credentials') || 
+          error.message?.includes('Invalid credentials')) {
+        errorMessage = 'Email o contraseña incorrectos. Por favor, verifica tus credenciales.';
+      } else if (error.message?.includes('Email not confirmed')) {
+        errorMessage = 'Por favor, verifica tu email antes de iniciar sesión.';
+      }
+      
+      Alert.alert('Error', errorMessage);
+    }
+  };
+
+  const handleGoogleLogin = async () => {
+    try {
+      await loginWithGoogle();
+      // El listener del store manejará la actualización del estado
+      // y el useEffect redirigirá cuando isAuthenticated cambie
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'No se pudo iniciar sesión con Google');
     }
   };
 
@@ -102,10 +128,9 @@ export default function LoginScreen() {
 
             <TouchableOpacity
               style={styles.googleButton}
-              onPress={loginWithGoogle}
+              onPress={handleGoogleLogin}
               disabled={isLoading}
             >
-              {/* Usamos un icono genérico o texto si no tienes el logo SVG */}
               <Chrome size={20} color={colors.text} style={{ marginRight: 10 }} />
               <Text style={styles.googleButtonText}>Google</Text>
             </TouchableOpacity>
