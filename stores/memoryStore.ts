@@ -75,7 +75,8 @@ export const useMemoryStore = create<MemoryState>((set) => ({
           const today = new Date();
           const dayMs = 24 * 60 * 60 * 1000;
 
-          memories = (fruits || []).filter((f: any) => {
+          // Filtrar recuerdos cercanos a hoy (±7 días)
+          const filteredMemories = (fruits || []).filter((f: any) => {
             if (!f.date) return false;
             const d = new Date(f.date);
             // Comparación aproximada: diferencia absoluta en días (ignorando zona horaria fina)
@@ -83,7 +84,17 @@ export const useMemoryStore = create<MemoryState>((set) => ({
               Math.floor((d.getTime() - today.getTime()) / dayMs)
             );
             return diffDays <= 7; // ventana de 1 semana antes / después
-          }).slice(0, 5); // máx. 5 eventos para el MVP
+          });
+
+          // Ordenar por antigüedad: los más antiguos primero (priorizar recuerdos de hace años)
+          filteredMemories.sort((a: any, b: any) => {
+            const dateA = new Date(a.date).getTime();
+            const dateB = new Date(b.date).getTime();
+            return dateA - dateB; // Ascendente = más antiguos primero
+          });
+
+          // Limitar a máximo 3 tarjetas
+          memories = filteredMemories.slice(0, 3);
         }
       }
 

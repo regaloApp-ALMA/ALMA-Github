@@ -1,11 +1,17 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ActivityIndicator, Alert, TextInput, Modal } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ActivityIndicator, Alert, TextInput, Modal, Dimensions, Platform } from 'react-native';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { useTreeStore } from '@/stores/treeStore';
 import { useGiftStore } from '@/stores/giftStore';
 import colors from '@/constants/colors';
-import { MapPin, Trash2, Share2, Send } from 'lucide-react-native';
+import { MapPin, Trash2, Share2, Send, Images, X, Play, Edit3 } from 'lucide-react-native';
 import { useThemeStore } from '@/stores/themeStore';
+// TODO: Migrar a expo-video cuando esté disponible
+// expo-av está deprecado en favor de expo-video
+// Ver: https://docs.expo.dev/versions/latest/sdk/video/
+import { Video, ResizeMode } from 'expo-av';
+
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function FruitDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -18,6 +24,8 @@ export default function FruitDetailsScreen() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [recipientEmail, setRecipientEmail] = useState('');
   const [isSharing, setIsSharing] = useState(false);
+  const [showGalleryModal, setShowGalleryModal] = useState(false);
+  const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
 
   useEffect(() => {
     if (!tree) fetchMyTree();
@@ -119,6 +127,20 @@ export default function FruitDetailsScreen() {
 
   if (!fruit || !branch) return <View style={[styles.center, isDarkMode && styles.bgDark]}><Text style={isDarkMode && styles.textWhite}>Recuerdo no encontrado</Text></View>;
 
+  // Separar imágenes y videos
+  const isVideoUrl = (url: string) => {
+    return url.includes('.mp4') || url.includes('.mov') || url.includes('video') || url.includes('.m4v');
+  };
+
+  const mediaUrls = fruit.mediaUrls || [];
+  const images = mediaUrls.filter(url => !isVideoUrl(url));
+  const videos = mediaUrls.filter(url => isVideoUrl(url));
+  const allMedia = [...images, ...videos];
+  
+  // Obtener la primera imagen para la cabecera (o frame de video)
+  const headerMedia = images.length > 0 ? images[0] : (videos.length > 0 ? videos[0] : null);
+  const isHeaderVideo = headerMedia && isVideoUrl(headerMedia);
+
   return (
     <>
       <Stack.Screen
@@ -129,6 +151,14 @@ export default function FruitDetailsScreen() {
           headerTransparent: true,
           headerRight: () => (
             <View style={styles.headerActions}>
+              <TouchableOpacity 
+                onPress={() => router.push({ pathname: '/edit-fruit', params: { id } })}
+                style={{ marginRight: 10, marginTop: 10 }}
+              >
+                <View style={styles.iconBg}>
+                  <Edit3 size={20} color={colors.primary} />
+                </View>
+              </TouchableOpacity>
               <TouchableOpacity 
                 onPress={() => setShowShareModal(true)} 
                 style={{ marginRight: 10, marginTop: 10 }}
@@ -147,8 +177,38 @@ export default function FruitDetailsScreen() {
         }}
       />
       <ScrollView style={[styles.container, isDarkMode && styles.containerDark]}>
-        {fruit.mediaUrls && fruit.mediaUrls.length > 0 ? (
-          <Image source={{ uri: fruit.mediaUrls[0] }} style={styles.coverImage} />
+        {headerMedia ? (
+          <View style={styles.coverContainer}>
+            {isHeaderVideo ? (
+              <Video
+                source={{ uri: headerMedia }}
+                style={styles.coverImage}
+                resizeMode={ResizeMode.COVER}
+                shouldPlay={false}
+                useNativeControls={false}
+              />
+            ) : (
+              <Image source={{ uri: headerMedia }} style={styles.coverImage} />
+            )}
+            {/* Botón de álbum siempre visible si hay al menos 1 media */}
+            {allMedia.length > 0 && (
+              <TouchableOpacity
+                style={styles.galleryButton}
+                onPress={() => {
+                  setCurrentMediaIndex(0);
+                  setShowGalleryModal(true);
+                }}
+                activeOpacity={0.8}
+              >
+                <View style={styles.galleryButtonContent}>
+                  <Images size={20} color="#FFF" />
+                  <Text style={styles.galleryButtonText}>
+                    {allMedia.length > 1 ? `${allMedia.length} fotos` : 'Ver álbum'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            )}
+          </View>
         ) : (
           <View style={[styles.coverPlaceholder, { backgroundColor: branch.color }]} />
         )}
@@ -229,6 +289,59 @@ export default function FruitDetailsScreen() {
               </TouchableOpacity>
             </View>
           </View>
+        </View>
+      </Modal>
+
+      {/* Modal de Galería de Álbum */}
+      <Modal
+        visible={showGalleryModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowGalleryModal(false)}
+      >
+        <View style={styles.galleryModalOverlay}>
+          <View style={styles.galleryHeader}>
+            <Text style={[styles.galleryTitle, isDarkMode && styles.textWhite]}>
+              Álbum ({currentMediaIndex + 1}/{allMedia.length})
+            </Text>
+            <TouchableOpacity
+              onPress={() => setShowGalleryModal(false)}
+              style={styles.galleryCloseButton}
+            >
+              <X size={24} color={isDarkMode ? '#FFF' : colors.text} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onMomentumScrollEnd={(e) => {
+              const index = Math.round(e.nativeEvent.contentOffset.x / SCREEN_WIDTH);
+              setCurrentMediaIndex(index);
+            }}
+            style={styles.galleryScrollView}
+            contentContainerStyle={styles.galleryScrollContent}
+          >
+            {allMedia.map((mediaUrl, index) => {
+              const isVideo = isVideoUrl(mediaUrl);
+              return (
+                <View key={index} style={styles.galleryItem}>
+                  {isVideo ? (
+                    <Video
+                      source={{ uri: mediaUrl }}
+                      style={styles.galleryMedia}
+                      resizeMode={ResizeMode.CONTAIN}
+                      shouldPlay={index === currentMediaIndex}
+                      useNativeControls={true}
+                    />
+                  ) : (
+                    <Image source={{ uri: mediaUrl }} style={styles.galleryMedia} resizeMode="contain" />
+                  )}
+                </View>
+              );
+            })}
+          </ScrollView>
         </View>
       </Modal>
     </>
@@ -346,5 +459,75 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 16,
     fontWeight: 'bold'
+  },
+  
+  // Galería Styles
+  coverContainer: {
+    position: 'relative',
+    width: '100%',
+    height: 300
+  },
+  galleryButton: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8
+  },
+  galleryButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6
+  },
+  galleryButtonText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: 'bold'
+  },
+  galleryModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.95)',
+    justifyContent: 'center'
+  },
+  galleryHeader: {
+    position: 'absolute',
+    top: Platform.OS === 'ios' ? 50 : 20,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    zIndex: 10
+  },
+  galleryTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFF'
+  },
+  galleryCloseButton: {
+    padding: 8
+  },
+  galleryScrollView: {
+    flex: 1
+  },
+  galleryScrollContent: {
+    alignItems: 'center'
+  },
+  galleryItem: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  galleryMedia: {
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT * 0.8
   }
 });

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Image } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, ActivityIndicator, Image, KeyboardAvoidingView, Platform } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useUserStore } from '@/stores/userStore';
 import colors from '@/constants/colors';
@@ -122,7 +122,12 @@ export default function ProfileSettingsScreen() {
         }}
       />
 
-      <ScrollView style={[styles.container, isDarkMode && styles.containerDark]}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+      >
+        <ScrollView style={[styles.container, isDarkMode && styles.containerDark]}>
 
         {/* SECCIÓN DE AVATAR */}
         <View style={[styles.header, isDarkMode && styles.headerDark]}>
@@ -240,7 +245,8 @@ export default function ProfileSettingsScreen() {
             </>
           )}
         </TouchableOpacity>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </>
   );
 }

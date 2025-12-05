@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image, Alert, Share, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Image, Alert, Share } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import colors from '@/constants/colors';
-import { Trees, Info, Share2, Users } from 'lucide-react-native';
+import { Trees, Users, Share2, Mail } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useUserStore } from '@/stores/userStore';
 import { useThemeStore } from '@/stores/themeStore';
@@ -20,126 +20,61 @@ export default function FamilyScreen() {
   }, [user]);
 
   /**
-   * NUEVA LÓGICA: Solo mostrar personas que han compartido su árbol contigo
-   * Esto se basa en:
-   * 1. tree_permissions donde eres el recipient
-   * 2. gifts aceptados donde el sender te ha compartido algo
+   * LÓGICA SIMPLIFICADA: Mostrar personas de family_connections
+   * Esta pantalla es solo de visualización
    */
   async function fetchFamily() {
     if (!user) return;
     try {
-      // 1. Buscar permisos de árbol donde YO soy el receptor (me han compartido su árbol)
-      const { data: permissions, error: permError } = await supabase
-        .from('tree_permissions')
+      // Buscar conexiones familiares
+      const { data: connections, error } = await supabase
+        .from('family_connections')
         .select(`
           id,
-          tree_id,
-          scope,
-          granter:profiles!granter_id (id, name, email, avatar_url),
-          tree:trees!tree_id (id, name, owner_id)
+          relation,
+          created_at,
+          relative:profiles!relative_id (id, name, email, avatar_url)
         `)
-        .or(`recipient_id.eq.${user.id},recipient_email.eq.${user.email}`)
-        .eq('access_level', 'view');
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
 
-      if (permError) {
-        console.error('Error fetching permissions:', permError);
+      if (error) {
+        console.error('Error fetching family connections:', error);
+        setFamilyMembers([]);
+      } else {
+        const formatted = (connections || []).map((conn: any) => ({
+          id: conn.relative?.id || conn.id,
+          name: conn.relative?.name || 'Familiar',
+          email: conn.relative?.email || '',
+          avatarUrl: conn.relative?.avatar_url || null,
+          relation: conn.relation || 'Familiar',
+          initial: (conn.relative?.name || 'F').charAt(0).toUpperCase(),
+        }));
+        setFamilyMembers(formatted);
       }
-
-      // 2. Buscar regalos aceptados donde el sender me ha compartido algo
-      const { data: acceptedGifts, error: giftsError } = await supabase
-        .from('gifts')
-        .select(`
-          id,
-          sender:profiles!sender_id (id, name, email, avatar_url),
-          status
-        `)
-        .or(`recipient_id.eq.${user.id},recipient_email.eq.${user.email}`)
-        .eq('status', 'accepted');
-
-      if (giftsError) {
-        console.error('Error fetching gifts:', giftsError);
-      }
-
-      // 3. Combinar y formatear los resultados
-      const membersMap = new Map<string, any>();
-
-      // Añadir desde tree_permissions
-      if (permissions) {
-        permissions.forEach((perm: any) => {
-          if (perm.granter && perm.granter.id) {
-            const granterId = perm.granter.id;
-            if (!membersMap.has(granterId)) {
-              membersMap.set(granterId, {
-                id: granterId,
-                name: perm.granter.name || 'Familiar',
-                email: perm.granter.email || '',
-                avatarUrl: perm.granter.avatar_url || null,
-                relation: 'Familiar', // Por defecto, podría mejorarse con family_connections
-                initial: (perm.granter.name || 'F').charAt(0).toUpperCase(),
-                treeId: perm.tree?.id || null,
-                sharedVia: 'tree_permission'
-              });
-            }
-          }
-        });
-      }
-
-      // Añadir desde gifts aceptados
-      if (acceptedGifts) {
-        acceptedGifts.forEach((gift: any) => {
-          if (gift.sender && gift.sender.id) {
-            const senderId = gift.sender.id;
-            if (!membersMap.has(senderId)) {
-              membersMap.set(senderId, {
-                id: senderId,
-                name: gift.sender.name || 'Familiar',
-                email: gift.sender.email || '',
-                avatarUrl: gift.sender.avatar_url || null,
-                relation: 'Familiar',
-                initial: (gift.sender.name || 'F').charAt(0).toUpperCase(),
-                sharedVia: 'gift'
-              });
-            }
-          }
-        });
-      }
-
-      // Convertir map a array
-      const formatted = Array.from(membersMap.values());
-      setFamilyMembers(formatted);
     } catch (error) {
       console.error('Error fetching family:', error);
+      setFamilyMembers([]);
     } finally {
       setLoading(false);
     }
   }
 
   const handleViewTree = async (member: any) => {
-    if (member.treeId) {
-      // Navegar a ver el árbol compartido
-      // Por ahora mostramos un mensaje, pero podrías navegar a una pantalla de árbol compartido
-      Alert.alert(
-        'Árbol compartido',
-        `Verás el árbol de ${member.name} aquí. (Funcionalidad en desarrollo)`
-      );
-    } else {
-      Alert.alert(
-        'Información',
-        `${member.name} ha compartido contenido contigo, pero aún no tiene un árbol completo compartido.`
-      );
-    }
+    // Por ahora mostramos un mensaje informativo
+    Alert.alert(
+      'Información',
+      `Para ver el árbol de ${member.name}, necesitas que comparta su árbol contigo desde "Compartir Árbol" en su perfil.`
+    );
   };
 
-  const handleRequestConnection = () => {
-    // Redirigir a compartir árbol para que el usuario pueda solicitar conexiones
+  const handleShareTree = () => {
     router.push('/share-tree');
   };
 
-  const handleInviteToALMA = async () => {
+  const handleInviteToApp = async () => {
     try {
-      const message = Platform.OS === 'ios' 
-        ? '¡Únete a ALMA y comparte tu historia conmigo! Descarga la app aquí: https://alma.app'
-        : '¡Únete a ALMA y comparte tu historia conmigo! Descarga la app aquí: https://alma.app';
+      const message = 'Te invito a unirte a ALMA para guardar nuestros recuerdos familiares. Descárgala aquí: https://alma.app';
       
       const result = await Share.share({
         message: message,
@@ -147,7 +82,6 @@ export default function FamilyScreen() {
       });
 
       if (result.action === Share.sharedAction) {
-        // El usuario compartió exitosamente
         console.log('Compartido exitosamente');
       }
     } catch (error: any) {
@@ -165,51 +99,25 @@ export default function FamilyScreen() {
         }}
       />
 
-      <ScrollView style={[styles.container, isDarkMode && styles.containerDark]}>
+      <ScrollView 
+        style={[styles.container, isDarkMode && styles.containerDark]}
+        contentContainerStyle={styles.contentContainer}
+      >
+        {/* 1. CABECERA (Texto Informativo) */}
         <View style={styles.header}>
-          <Text style={[styles.title, isDarkMode && styles.textWhite]}>Raíces de tu árbol</Text>
-          <Text style={[styles.subtitle, isDarkMode && styles.textLight]}>
-            Estas son las personas que han compartido su historia contigo. Solo aparecen aquí quienes te han dado permiso explícito.
+          <Text style={[styles.title, isDarkMode && styles.textWhite]}>Raíces Familiares</Text>
+          <Text style={[styles.description, isDarkMode && styles.textLight]}>
+            Aquí puedes ver los árboles compartidos por tus familiares. Cada familiar que te comparte su árbol aparece como una raíz en tu árbol.
           </Text>
         </View>
 
+        {/* 2. CUERPO (Lista o Estado Vacío) */}
         {loading ? (
-          <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />
-        ) : familyMembers.length === 0 ? (
-          <View style={styles.emptyState}>
-            <View style={[styles.emptyIconContainer, isDarkMode && styles.emptyIconContainerDark]}>
-              <Info size={48} color={colors.primary} />
-            </View>
-            <Text style={[styles.emptyTitle, isDarkMode && styles.textWhite]}>
-              Aún no tienes raíces familiares
-            </Text>
-            <Text style={[styles.emptyText, isDarkMode && styles.textLight]}>
-              Para ver las raíces de tu familia aquí, pídeles que te compartan su árbol desde su perfil.
-            </Text>
-            <Text style={[styles.emptySubText, isDarkMode && styles.textLight]}>
-              Cuando alguien comparta su árbol contigo o te envíe un regalo y lo aceptes, aparecerá aquí como una raíz de tu árbol.
-            </Text>
-            
-            <View style={styles.emptyActions}>
-              <TouchableOpacity 
-                style={styles.requestButton} 
-                onPress={handleRequestConnection}
-              >
-                <Share2 size={20} color={colors.white} />
-                <Text style={styles.requestButtonText}>Solicitar Conexión</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.inviteButton, isDarkMode && styles.inviteButtonDark]} 
-                onPress={handleInviteToALMA}
-              >
-                <Users size={20} color={colors.primary} />
-                <Text style={[styles.inviteButtonText, isDarkMode && styles.textWhite]}>Invitar a ALMA</Text>
-              </TouchableOpacity>
-            </View>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator color={colors.primary} size="large" />
           </View>
-        ) : (
-          <>
+        ) : familyMembers.length > 0 ? (
+          <View style={styles.listContainer}>
             {familyMembers.map((member) => (
               <TouchableOpacity
                 key={member.id}
@@ -228,7 +136,7 @@ export default function FamilyScreen() {
                   <View style={styles.memberDetails}>
                     <Text style={[styles.memberName, isDarkMode && styles.textWhite]}>{member.name}</Text>
                     <Text style={[styles.memberRelation, isDarkMode && styles.textLight]}>
-                      {member.relation} • Compartido vía {member.sharedVia === 'tree_permission' ? 'Árbol' : 'Regalo'}
+                      {member.relation}
                     </Text>
                     {member.email && (
                       <Text style={[styles.memberEmail, isDarkMode && styles.textLight]}>{member.email}</Text>
@@ -238,7 +146,7 @@ export default function FamilyScreen() {
 
                 <View style={styles.memberActions}>
                   <TouchableOpacity 
-                    style={[styles.actionButton, isDarkMode && styles.actionButtonDark]}
+                    style={[styles.actionButtonSmall, isDarkMode && styles.actionButtonSmallDark]}
                     onPress={() => handleViewTree(member)}
                   >
                     <Trees size={20} color={colors.primary} />
@@ -246,83 +154,171 @@ export default function FamilyScreen() {
                 </View>
               </TouchableOpacity>
             ))}
-
-            <View style={styles.infoCard}>
-              <Info size={20} color={colors.primary} />
-              <Text style={[styles.infoText, isDarkMode && styles.textLight]}>
-                Para añadir más familiares, pídeles que compartan su árbol contigo desde "Compartir Árbol" en su perfil.
-              </Text>
+          </View>
+        ) : (
+          <View style={styles.emptyState}>
+            <View style={[styles.emptyIconContainer, isDarkMode && styles.emptyIconContainerDark]}>
+              <Users size={48} color={colors.primary} />
             </View>
-          </>
+            <Text style={[styles.emptyTitle, isDarkMode && styles.textWhite]}>
+              Aún no tienes familiares conectados.
+            </Text>
+          </View>
         )}
+
+        {/* 3. BOTONES DE ACCIÓN (Pie de página) */}
+        <View style={styles.actionsContainer}>
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.primaryButton, isDarkMode && styles.primaryButtonDark]}
+            onPress={handleInviteToApp}
+          >
+            <Mail size={20} color={colors.white} />
+            <Text style={styles.primaryButtonText}>Invitar a la App</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.actionButton, styles.secondaryButton, isDarkMode && styles.secondaryButtonDark]}
+            onPress={handleShareTree}
+          >
+            <Share2 size={20} color={colors.primary} />
+            <Text style={[styles.secondaryButtonText, isDarkMode && styles.textWhite]}>Compartir mi Árbol</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  containerDark: { backgroundColor: '#121212' },
-  header: { padding: 20 },
-  title: { fontSize: 24, fontWeight: 'bold', color: colors.text, marginBottom: 8 },
-  subtitle: { fontSize: 14, color: colors.textLight, lineHeight: 20 },
+  container: { 
+    flex: 1, 
+    backgroundColor: colors.background 
+  },
+  containerDark: { 
+    backgroundColor: '#121212' 
+  },
+  contentContainer: {
+    paddingBottom: 40,
+  },
+  
+  // CABECERA
+  header: {
+    padding: 20,
+    paddingBottom: 24,
+    alignItems: 'center',
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  description: {
+    fontSize: 15,
+    color: colors.textLight,
+    lineHeight: 22,
+    textAlign: 'center',
+    paddingHorizontal: 8,
+  },
   textWhite: { color: '#FFF' },
   textLight: { color: '#AAA' },
-  memberCard: { 
-    backgroundColor: colors.white, 
-    borderRadius: 12, 
-    marginHorizontal: 16, 
-    marginBottom: 16, 
-    padding: 16, 
-    shadowColor: colors.text, 
-    shadowOffset: { width: 0, height: 2 }, 
-    shadowOpacity: 0.1, 
-    shadowRadius: 4, 
-    elevation: 2 
+  
+  // CUERPO - Loading
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    minHeight: 200,
   },
-  memberCardDark: { backgroundColor: '#1E1E1E' },
-  memberInfo: { flexDirection: 'row', marginBottom: 12 },
-  avatar: { 
-    width: 50, 
-    height: 50, 
-    borderRadius: 25, 
-    backgroundColor: colors.primaryLight, 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    marginRight: 16 
+  
+  // CUERPO - Lista
+  listContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 20,
+  },
+  memberCard: {
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    marginBottom: 16,
+    padding: 16,
+    shadowColor: colors.text,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  memberCardDark: {
+    backgroundColor: '#1E1E1E',
+  },
+  memberInfo: {
+    flexDirection: 'row',
+    marginBottom: 12,
+  },
+  avatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
   },
   avatarImage: {
     width: 50,
     height: 50,
     borderRadius: 25,
-    marginRight: 16
+    marginRight: 16,
   },
-  avatarText: { fontSize: 24, fontWeight: 'bold', color: colors.primary },
-  memberDetails: { flex: 1 },
-  memberName: { fontSize: 18, fontWeight: 'bold', color: colors.text, marginBottom: 2 },
-  memberRelation: { fontSize: 14, color: colors.textLight, marginBottom: 4 },
-  memberEmail: { fontSize: 12, color: colors.textLight },
-  memberActions: { 
-    flexDirection: 'row', 
-    justifyContent: 'flex-end', 
-    borderTopWidth: 1, 
-    borderTopColor: colors.lightGray, 
-    paddingTop: 12 
+  avatarText: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.primary,
   },
-  actionButton: { 
-    width: 40, 
-    height: 40, 
-    borderRadius: 20, 
-    backgroundColor: colors.primaryLight, 
-    alignItems: 'center', 
-    justifyContent: 'center', 
-    marginLeft: 8 
+  memberDetails: {
+    flex: 1,
   },
-  actionButtonDark: { backgroundColor: '#333' },
-  emptyState: { 
-    alignItems: 'center', 
+  memberName: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  memberRelation: {
+    fontSize: 14,
+    color: colors.textLight,
+    marginBottom: 4,
+  },
+  memberEmail: {
+    fontSize: 12,
+    color: colors.textLight,
+  },
+  memberActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    borderTopWidth: 1,
+    borderTopColor: colors.lightGray,
+    paddingTop: 12,
+  },
+  actionButtonSmall: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  actionButtonSmallDark: {
+    backgroundColor: '#333',
+  },
+  
+  // CUERPO - Estado Vacío
+  emptyState: {
+    alignItems: 'center',
     padding: 40,
-    marginTop: 20
+    minHeight: 200,
+    justifyContent: 'center',
   },
   emptyIconContainer: {
     width: 100,
@@ -331,89 +327,56 @@ const styles = StyleSheet.create({
     backgroundColor: colors.primaryLight + '30',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 24
+    marginBottom: 24,
   },
   emptyIconContainerDark: {
-    backgroundColor: '#333'
+    backgroundColor: '#333',
   },
-  emptyTitle: { 
-    fontSize: 20, 
-    fontWeight: 'bold', 
-    color: colors.text, 
-    marginBottom: 12,
-    textAlign: 'center'
-  },
-  emptyText: { 
-    fontSize: 16, 
-    color: colors.text, 
+  emptyTitle: {
+    fontSize: 20,
+    fontWeight: '600',
+    color: colors.text,
     textAlign: 'center',
-    marginBottom: 12,
-    lineHeight: 24
   },
-  emptySubText: { 
-    fontSize: 14, 
-    color: colors.textLight, 
-    textAlign: 'center',
-    lineHeight: 20,
-    marginBottom: 24
+  
+  // BOTONES DE ACCIÓN (Pie de página)
+  actionsContainer: {
+    paddingHorizontal: 20,
+    paddingTop: 32,
+    gap: 12,
   },
-  requestButton: {
+  actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: 25,
-    paddingVertical: 14,
+    gap: 10,
+    paddingVertical: 16,
     paddingHorizontal: 24,
-    marginTop: 12,
-    gap: 8
+    borderRadius: 12,
   },
-  requestButtonText: {
+  primaryButton: {
+    backgroundColor: colors.primary,
+  },
+  primaryButtonDark: {
+    backgroundColor: colors.primary,
+  },
+  primaryButtonText: {
     color: colors.white,
     fontSize: 16,
-    fontWeight: 'bold'
+    fontWeight: '600',
   },
-  emptyActions: {
-    width: '100%',
-    gap: 12,
-    marginTop: 8
-  },
-  inviteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+  secondaryButton: {
     backgroundColor: colors.white,
-    borderRadius: 25,
-    paddingVertical: 14,
-    paddingHorizontal: 24,
     borderWidth: 2,
     borderColor: colors.primary,
-    gap: 8
   },
-  inviteButtonDark: {
+  secondaryButtonDark: {
     backgroundColor: '#1E1E1E',
-    borderColor: colors.primary
+    borderColor: colors.primary,
   },
-  inviteButtonText: {
+  secondaryButtonText: {
     color: colors.primary,
     fontSize: 16,
-    fontWeight: 'bold'
+    fontWeight: '600',
   },
-  infoCard: {
-    flexDirection: 'row',
-    backgroundColor: colors.primaryLight + '20',
-    borderRadius: 12,
-    padding: 16,
-    marginHorizontal: 16,
-    marginBottom: 30,
-    marginTop: 10,
-    gap: 12,
-    alignItems: 'flex-start'
-  },
-  infoText: {
-    flex: 1,
-    fontSize: 14,
-    color: colors.text,
-    lineHeight: 20
-  }
 });

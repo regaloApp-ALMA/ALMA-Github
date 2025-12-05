@@ -1,5 +1,5 @@
 import React, { memo, useMemo } from 'react';
-import { View, StyleSheet, Text, TouchableOpacity, Dimensions, ScrollView, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Text, TouchableOpacity, Dimensions, ScrollView, ActivityIndicator, Share } from 'react-native';
 import { ReactNativeZoomableView } from '@openspacelabs/react-native-zoomable-view';
 import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { useTreeStore } from '@/stores/treeStore';
@@ -201,16 +201,26 @@ export default function Tree() {
                         ))
                     ) : (
                         <View style={styles.emptyState}>
-                            <Text style={styles.emptyText}>Añade a tus padres para empezar.</Text>
+                            <Text style={styles.emptyText} numberOfLines={0}>
+                                Aquí aparecerán tus familiares cuando te compartan su árbol.
+                            </Text>
+                            <TouchableOpacity
+                                style={styles.inviteCard}
+                                onPress={async () => {
+                                    try {
+                                        await Share.share({
+                                            message: '¡Únete a ALMA para guardar tus recuerdos y compartir tu historia familiar! Descarga la app: https://alma.app',
+                                            title: 'Invita a ALMA'
+                                        });
+                                    } catch (error) {
+                                        console.error('Error sharing:', error);
+                                    }
+                                }}
+                            >
+                                <Text style={styles.inviteText}>Invitar a la App</Text>
+                            </TouchableOpacity>
                         </View>
                     )}
-
-                    <TouchableOpacity
-                        style={styles.inviteCard}
-                        onPress={() => router.push('/share-tree')}
-                    >
-                        <Text style={styles.inviteText}>+ Invitar</Text>
-                    </TouchableOpacity>
                 </ScrollView>
             </View>
         </View>
@@ -274,11 +284,34 @@ const styles = StyleSheet.create({
     },
     rootName: { fontWeight: '700', color: '#333', fontSize: 14 },
     rootRelation: { color: '#888', fontSize: 11 },
-    emptyState: { marginRight: 10 },
-    emptyText: { color: '#AAA', fontStyle: 'italic' },
+    emptyState: { 
+        marginRight: 10, 
+        padding: 12, 
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        flexWrap: 'wrap',
+        maxWidth: '100%',
+        minWidth: 200
+    },
+    emptyText: { 
+        color: '#AAA', 
+        fontStyle: 'italic',
+        fontSize: 13,
+        lineHeight: 18,
+        flex: 1,
+        flexWrap: 'wrap',
+        minWidth: 150,
+        maxWidth: '70%'
+    },
     inviteCard: {
-        backgroundColor: '#F0F4C3', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 16,
-        justifyContent: 'center', alignItems: 'center',
+        backgroundColor: '#F0F4C3', 
+        paddingVertical: 10, 
+        paddingHorizontal: 16, 
+        borderRadius: 16,
+        justifyContent: 'center', 
+        alignItems: 'center',
+        alignSelf: 'flex-end'
     },
     inviteText: { color: '#558B2F', fontWeight: 'bold', fontSize: 13 },
 });

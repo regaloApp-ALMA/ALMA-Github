@@ -25,6 +25,7 @@ interface TreeState {
 
   // Funciones de Frutos
   addFruit: (fruit: Omit<FruitType, 'id' | 'createdAt'>) => Promise<void>;
+  updateFruit: (fruitId: string, updates: Partial<Omit<FruitType, 'id' | 'createdAt'>>) => Promise<void>;
   deleteFruit: (fruitId: string) => Promise<void>;
 }
 
@@ -219,6 +220,36 @@ export const useTreeStore = create<TreeState>((set, get) => ({
     } catch (e: any) {
       console.error('Error in addFruit:', e);
       set({ error: e.message || 'No se pudo crear el recuerdo' });
+      throw e;
+    }
+  },
+
+  updateFruit: async (fruitId: string, updates: Partial<Omit<FruitType, 'id' | 'createdAt'>>) => {
+    try {
+      const updateData: any = {};
+      
+      if (updates.title !== undefined) updateData.title = updates.title;
+      if (updates.description !== undefined) updateData.description = updates.description;
+      if (updates.mediaUrls !== undefined) updateData.media_urls = updates.mediaUrls;
+      if (updates.branchId !== undefined) updateData.branch_id = updates.branchId;
+      if (updates.isShared !== undefined) updateData.is_shared = updates.isShared;
+      if (updates.position !== undefined) updateData.position = updates.position;
+      if (updates.location !== undefined) updateData.location = updates.location;
+
+      const { error } = await supabase
+        .from('fruits')
+        .update(updateData)
+        .eq('id', fruitId);
+      
+      if (error) {
+        console.error('Error updating fruit:', error);
+        throw error;
+      }
+      
+      await get().fetchMyTree();
+    } catch (e: any) {
+      console.error('Error in updateFruit:', e);
+      set({ error: e.message || 'No se pudo actualizar el recuerdo' });
       throw e;
     }
   },

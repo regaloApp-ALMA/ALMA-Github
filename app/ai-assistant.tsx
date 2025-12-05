@@ -1,9 +1,12 @@
 import React, { useState, useRef } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { Stack } from 'expo-router';
 import { Send } from 'lucide-react-native';
 import colors from '@/constants/colors';
 import { useThemeStore } from '@/stores/themeStore';
 import { useTreeStore } from '@/stores/treeStore';
+import { useUserStore } from '@/stores/userStore';
+import { supabase } from '@/lib/supabase';
 import categories from '@/constants/categories';
 
 type Message = { id: string; role: 'user' | 'assistant' | 'system'; content: string; };
@@ -19,56 +22,194 @@ export default function AIAssistant() {
   const [pendingCommand, setPendingCommand] = useState<PendingCommand | null>(null);
   const scrollViewRef = useRef<ScrollView>(null);
   const { theme } = useThemeStore();
-  const { addBranch, addFruit, tree } = useTreeStore();
+  const { user } = useUserStore();
+  const { addBranch, addFruit, tree, fetchMyTree } = useTreeStore();
   const isDarkMode = theme === 'dark';
 
+  // CONSTRUCCIÓN DE CONTEXTO INTELIGENTE: Recuerdos propios y de familiares
+  const buildContext = async (): Promise<string> => {
+    if (!user?.id) return '';
+
+    try {
+      // 1. Obtener mis recuerdos (fruits del árbol propio)
+      const { data: myTree } = await supabase
+        .from('trees')
+        .select('id')
+        .eq('owner_id', user.id)
+        .single();
+
+      let myContext = '';
+      if (myTree) {
+        const { data: myBranches } = await supabase
+          .from('branches')
+          .select('id')
+          .eq('tree_id', myTree.id);
+
+        const branchIds = myBranches?.map(b => b.id) || [];
+
+        if (branchIds.length > 0) {
+          const { data: myFruits } = await supabase
+            .from('fruits')
+            .select('title, description, date, branch:branches(name)')
+            .in('branch_id', branchIds)
+            .order('created_at', { ascending: false })
+            .limit(15);
+
+          if (myFruits && myFruits.length > 0) {
+            myContext = 'MIS RECUERDOS:\n' + myFruits.map((f: any) => 
+              `- "${f.title}": ${f.description || 'Sin descripción'} (en la rama "${f.branch?.name || 'Sin rama'}")`
+            ).join('\n');
+          }
+        }
+      }
+
+      // 2. Obtener recuerdos de familiares conectados
+      const { data: connections } = await supabase
+        .from('family_connections')
+        .select('relative_id')
+        .eq('user_id', user.id);
+
+      let familyContext = '';
+      if (connections && connections.length > 0) {
+        const familyIds = connections.map(c => c.relative_id);
+
+        // Buscar árboles de esos familiares
+        const { data: familyTrees } = await supabase
+          .from('trees')
+          .select('id, owner_id, owner:profiles!owner_id(name)')
+          .in('owner_id', familyIds);
+
+        if (familyTrees && familyTrees.length > 0) {
+          const treeIds = familyTrees.map(t => t.id);
+
+          // Buscar ramas de esos árboles
+          const { data: familyBranches } = await supabase
+            .from('branches')
+            .select('id, tree_id')
+            .in('tree_id', treeIds);
+
+          const branchIds = familyBranches?.map(b => b.id) || [];
+
+          if (branchIds.length > 0) {
+            // Buscar frutos de esos árboles
+            const { data: familyFruits } = await supabase
+              .from('fruits')
+              .select(`
+                title, description, date,
+                branch:branches(
+                  name,
+                  tree:trees(
+                    owner:profiles(name)
+                  )
+                )
+              `)
+              .in('branch_id', branchIds)
+              .order('created_at', { ascending: false })
+              .limit(20);
+
+            if (familyFruits && familyFruits.length > 0) {
+              const familyMap = new Map();
+              familyTrees.forEach((t: any) => {
+                familyMap.set(t.owner_id, t.owner?.name || 'Familiar');
+              });
+
+              familyContext = '\n\nRECUERDOS DE MI FAMILIA:\n' + familyFruits.map((f: any) => {
+                const ownerName = f.branch?.tree?.owner?.name || 'Un familiar';
+                return `- ${ownerName} tiene un recuerdo sobre "${f.title}": ${f.description || 'Sin descripción'} (en la rama "${f.branch?.name || 'Sin rama'}")`;
+              }).join('\n');
+            }
+          }
+        }
+      }
+
+      return myContext + familyContext;
+    } catch (error) {
+      console.error('Error building context:', error);
+      return '';
+    }
+  };
+
   // Ejecuta realmente la acción pendiente (solo cuando el usuario confirma)
-  const executeAICommand = async (command: PendingCommand) => {
+  const executeAICommand = async (command: PendingCommand): Promise<string | null> => {
+    console.log('🔵 [AI] Ejecutando comando:', command.action);
+    
     try {
       if (command.action === 'create_branch') {
-        const catObj = categories.find(c => c.id === command.data.category) || categories[0];
+        console.log('🔵 [AI] Creando rama:', command.data);
+        
+        // VALIDACIÓN: Verificar que la categoría existe
+        const validCategoryIds = categories.map(c => c.id);
+        const categoryId = command.data.category && validCategoryIds.includes(command.data.category)
+          ? command.data.category
+          : 'hobbies'; // Fallback seguro
+        
+        const catObj = categories.find(c => c.id === categoryId) || categories[0];
+        
+        console.log('🔵 [AI] Categoría validada:', categoryId, 'Color:', catObj.color);
+        
         await addBranch({
-          name: command.data.name,
-          categoryId: command.data.category || 'hobbies',
+          name: command.data.name.trim(),
+          categoryId: categoryId,
           color: catObj.color,
-          position: { x: 0, y: 0 }, // Campo requerido
+          position: { x: 0, y: 0 },
+          isShared: false,
         } as any);
+        
+        console.log('✅ [AI] Rama creada exitosamente');
+        await fetchMyTree(); // Refrescar el árbol
         return null;
       }
 
       else if (command.action === 'create_fruit') {
+        console.log('🔵 [AI] Creando fruto:', command.data);
+        
         // Búsqueda inteligente de rama
         let targetBranchId = tree?.branches[0]?.id;
 
         if (command.data.branchName) {
-          // Buscamos coincidencia aproximada en las ramas reales
-          const targetName = command.data.branchName.toLowerCase();
-          const match = tree?.branches.find(b => b.name.toLowerCase().includes(targetName));
+          const targetName = command.data.branchName.toLowerCase().trim();
+          const match = tree?.branches.find(b => 
+            b.name.toLowerCase().includes(targetName) || 
+            targetName.includes(b.name.toLowerCase())
+          );
 
           if (match) {
             targetBranchId = match.id;
+            console.log('🔵 [AI] Rama encontrada:', match.name);
           } else {
-            // Si no encuentra la rama exacta, buscamos por categoría o creamos una nueva si fuera necesario (aquí simplificamos usando la primera o avisando)
+            console.log('⚠️ [AI] Rama no encontrada:', command.data.branchName);
             return `He intentado guardar el recuerdo en "${command.data.branchName}", pero no he encontrado esa rama. ¿Quieres que cree la rama primero?`;
           }
         }
 
-        if (!targetBranchId) return "Necesito que crees una rama primero para poder guardar este recuerdo.";
+        if (!targetBranchId) {
+          console.log('⚠️ [AI] No hay ramas disponibles');
+          return "Necesito que crees una rama primero para poder guardar este recuerdo.";
+        }
 
-        // CORRECCIÓN CRÍTICA: Asegurar TODOS los campos requeridos
-        await addFruit({
-          title: command.data.title,
-          description: command.data.description,
+        // VALIDACIÓN: Asegurar todos los campos requeridos
+        const fruitData = {
+          title: command.data.title?.trim() || 'Recuerdo sin título',
+          description: command.data.description?.trim() || '',
           branchId: targetBranchId,
-          mediaUrls: [], // Array vacío por defecto
+          mediaUrls: [] as string[],
           isShared: false,
-          location: { name: '' }, // Objeto location requerido
-          position: { x: 0, y: 0 } // Objeto position requerido
-        } as any);
+          location: { name: '' },
+          position: { x: 0, y: 0 }
+        };
+
+        console.log('🔵 [AI] Datos del fruto validados:', fruitData);
+
+        await addFruit(fruitData as any);
+        
+        console.log('✅ [AI] Fruto creado exitosamente');
+        await fetchMyTree(); // Refrescar el árbol
         return null;
       }
     } catch (e: any) {
-      console.error('Error executing AI command:', e);
+      console.error('❌ [AI] Error ejecutando comando:', e);
+      console.error('❌ [AI] Stack:', e.stack);
+      Alert.alert('Error al guardar', e.message || 'Hubo un problema técnico. Por favor, inténtalo de nuevo.');
       return "Tuve un pequeño problema técnico al guardar eso. ¿Podemos intentarlo de nuevo?";
     }
     return null;
@@ -77,12 +218,26 @@ export default function AIAssistant() {
   const handleSend = async () => {
     if (!input.trim()) return;
 
-    const userMessage: Message = { id: Date.now().toString(), role: 'user', content: input };
+    const userMessage: Message = { 
+      id: Date.now().toString(), 
+      role: 'user', 
+      content: input 
+    };
     setMessages(prev => [...prev, userMessage]);
+    const currentInput = input;
     setInput('');
     setIsLoading(true);
 
     try {
+      // Construir contexto inteligente (recuerdos propios y de familiares)
+      const context = await buildContext();
+
+      // Obtener últimos 8 mensajes para contexto conversacional (excluyendo system)
+      const recentMessages = messages
+        .filter(m => m.role !== 'system')
+        .slice(-8)
+        .map(m => ({ role: m.role, content: m.content }));
+
       // 1. CONTEXTO VITAL: Le pasamos las ramas existentes para que no alucine
       const existingBranches = tree?.branches.map(b => `"${b.name}" (${b.categoryId})`).join(', ') || "Ninguna rama creada aún";
 
@@ -94,36 +249,55 @@ export default function AIAssistant() {
             {
               role: 'system',
               content: `Eres ALMA, un asistente biográfico cálido, empático y profundo. Tu misión es escuchar al usuario, hacerle preguntas para profundizar en sus sentimientos y ayudarle a organizar su vida.
+
+              ${context ? `\n${context}\n` : ''}
               
               RAMAS EXISTENTES DEL USUARIO: ${existingBranches}
               
               INSTRUCCIONES CLAVE:
               1. SÉ AMABLE Y PROFUNDO: Responde siempre con calidez, comentando lo que te cuentan. No seas un robot. Haz preguntas que inviten a la reflexión.
               
-              2. DETECTA INTENCIONES: Si el usuario te cuenta un recuerdo o quiere crear una rama, SOLO CUANDO HAYAS REUNIDO SUFICIENTE CONTEXTO (después de varias interacciones) propón UN ÚNICO resumen elaborado (rama o recuerdo) para guardar.
+              2. USA EL CONTEXTO: Si el usuario pregunta sobre recuerdos (propios o de familiares), usa la información del contexto proporcionado arriba para responder de manera precisa. Por ejemplo, si pregunta "¿Qué cocinó mi abuela en Navidad?", busca en los recuerdos de familiares.
               
-              3. DESCRIPCIONES EXTENSAS Y RICAS: Cuando generes un recuerdo (fruto), NO hagas resúmenes de una línea. Desarrolla la historia con al menos 3-4 frases completas, describiendo:
-                 - Sensaciones y emociones que sintió el usuario
-                 - El ambiente y contexto del momento
-                 - Detalles específicos que mencionó
-                 - El significado emocional del recuerdo
-              Ejemplo de descripción rica: "Era una tarde de verano cuando todo cambió. El sol se filtraba entre las hojas mientras caminábamos por ese sendero que solo conocíamos nosotros. Recuerdo cómo tu risa resonaba en el aire, mezclándose con el canto de los pájaros. En ese momento, supe que había encontrado algo especial, algo que quería conservar para siempre. La sensación de paz y conexión que sentí entonces sigue viva en mi memoria, como un tesoro que guardo con cuidado."
+              3. DETECTA INTENCIONES: Si el usuario te cuenta un recuerdo o quiere crear una rama, SOLO CUANDO HAYAS REUNIDO SUFICIENTE CONTEXTO (después de varias interacciones) propón UN ÚNICO resumen elaborado (rama o recuerdo) para guardar.
               
-              4. BLOQUE JSON: al FINAL de tu respuesta genera como mucho UN SOLO bloque JSON con la propuesta (no uno por mensaje). No guardes nada directamente, solo propones.
+              4. DESCRIPCIONES HUMANAS Y AUTÉNTICAS (MÍMESIS OBLIGATORIA): Cuando generes un recuerdo (fruto), NO hagas resúmenes de una línea. Desarrolla la historia con al menos 3-4 frases completas, PERO:
+                 
+                 REGLAS DE ESTILO:
+                 - MÍMESIS TOTAL: NO escribas como una IA ni como un poeta genérico. CLONA EXACTAMENTE el estilo de habla del usuario. Analiza su tono, vocabulario, longitud de frases y nivel de formalidad.
+                 - Si el usuario escribe corto y directo → el recuerdo debe ser directo y conciso
+                 - Si es emotivo y detallado → sé emotivo y detallado
+                 - Si usa lenguaje coloquial/slang → usa lenguaje coloquial
+                 - Si es formal → mantén formalidad
+                 - Si escribe con errores o informal → refleja ese estilo natural
+                 
+                 - PRIMERA PERSONA OBLIGATORIA: Usa estrictamente la PRIMERA PERSONA DEL SINGULAR ('Yo fui', 'Nosotros comimos', 'Me sentí', 'Estaba'). NUNCA uses tercera persona.
+                 
+                 - PROHIBIDO: Evita COMPLETAMENTE frases cliché como 'un tapiz de recuerdos', 'ecos del pasado', 'tejiendo memorias', 'hilos dorados', 'canto eterno'. Usa lenguaje natural, cotidiano y directo.
+                 
+                 - FIDELIDAD: Describe SOLO sensaciones, emociones, ambiente y detalles específicos que el usuario mencionó. NO inventes cosas que no dijo.
+                 
+              Ejemplo BUENO (natural, primera persona, tono del usuario): "Era una tarde de verano cuando todo cambió. El sol se filtraba entre las hojas mientras caminábamos por ese sendero que solo conocíamos nosotros. Recuerdo cómo tu risa resonaba en el aire, mezclándose con el canto de los pájaros. En ese momento, supe que había encontrado algo especial, algo que quería conservar para siempre."
               
-              5. USA LAS RAMAS REALES: Si te piden guardar un recuerdo, intenta asignarlo a una de las "RAMAS EXISTENTES" que mejor encaje. Si no encaja ninguna, usa la más lógica o sugiere crear una nueva.
+              Ejemplo MALO (demasiado poético/artificial): "En el tapiz de la memoria, ese día quedó tejido con hilos dorados de felicidad. Los ecos del pasado resuenan aún en mi corazón."
+              
+              5. BLOQUE JSON: al FINAL de tu respuesta genera como mucho UN SOLO bloque JSON con la propuesta (no uno por mensaje). No guardes nada directamente, solo propones.
+              
+              6. USA LAS RAMAS REALES: Si te piden guardar un recuerdo, intenta asignarlo a una de las "RAMAS EXISTENTES" que mejor encaje. Si no encaja ninguna, usa la más lógica o sugiere crear una nueva.
+              
+              7. CATEGORÍAS VÁLIDAS: Solo puedes usar estas categorías: "family", "travel", "work", "education", "friends", "pets", "hobbies". Si no estás seguro, usa "hobbies".
 
               FORMATO JSON (Ponlo SOLO si hay que guardar algo, al final del texto):
               
               Para RAMAS:
-              @@JSON@@{"action": "create_branch", "data": { "name": "Nombre", "category": "family"|"travel"|"work"|"hobbies" }}@@ENDJSON@@
+              @@JSON@@{"action": "create_branch", "data": { "name": "Nombre", "category": "family"|"travel"|"work"|"education"|"friends"|"pets"|"hobbies" }}@@ENDJSON@@
               
               Para RECUERDOS (Frutos):
-              @@JSON@@{"action": "create_fruit", "data": { "title": "Título Poético y Emotivo", "description": "Descripción EXTENSA de 3-4 frases con detalles, sensaciones y emociones", "branchName": "Nombre EXACTO de una rama existente o la más parecida" }}@@ENDJSON@@
+              @@JSON@@{"action": "create_fruit", "data": { "title": "Título Directo y Emotivo (sin exagerar)", "description": "Descripción EXTENSA de 3-4 frases en primera persona, con el mismo tono que el usuario, usando lenguaje natural y cotidiano", "branchName": "Nombre EXACTO de una rama existente o la más parecida" }}@@ENDJSON@@
               `
             },
-            ...messages.filter(m => m.role !== 'system').slice(-8),
-            { role: 'user', content: input }
+            ...recentMessages,
+            { role: 'user', content: currentInput }
           ]
         })
       });
@@ -148,132 +322,155 @@ export default function AIAssistant() {
         }
       }
 
-      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', content: visibleReply }]);
+      const assistantMessage: Message = { 
+        id: (Date.now() + 1).toString(), 
+        role: 'assistant', 
+        content: visibleReply 
+      };
+      setMessages(prev => [...prev, assistantMessage]);
 
     } catch (error) {
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'assistant', content: 'Lo siento, mi conexión con la memoria falló un momento. ¿Me lo puedes repetir?' }]);
+      console.error('Error en handleSend:', error);
+      setMessages(prev => [...prev, { 
+        id: Date.now().toString(), 
+        role: 'assistant', 
+        content: 'Lo siento, mi conexión con la memoria falló un momento. ¿Me lo puedes repetir?' 
+      }]);
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.container, isDarkMode && styles.containerDark]}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
-      <ScrollView
-        style={styles.messagesContainer}
-        ref={scrollViewRef}
-        onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+    <>
+      <Stack.Screen
+        options={{
+          title: 'Asistente ALMA',
+        }}
+      />
+      
+      <KeyboardAvoidingView
+        style={[styles.container, isDarkMode && styles.containerDark]}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
       >
-        {messages.map(msg => (
-          <View
-            key={msg.id}
-            style={[
-              styles.bubble,
-              msg.role === 'user' ? styles.userBubble : styles.botBubble,
-              isDarkMode && msg.role === 'assistant' && styles.botBubbleDark,
-            ]}
-          >
-            <Text
+        <ScrollView
+          style={styles.messagesContainer}
+          ref={scrollViewRef}
+          onContentSizeChange={() => scrollViewRef.current?.scrollToEnd({ animated: true })}
+        >
+          {messages.map(msg => (
+            <View
+              key={msg.id}
               style={[
-                styles.text,
-                msg.role === 'user' ? styles.textWhite : isDarkMode ? styles.textWhite : styles.textBlack,
+                styles.bubble,
+                msg.role === 'user' ? styles.userBubble : styles.botBubble,
+                isDarkMode && msg.role === 'assistant' && styles.botBubbleDark,
               ]}
             >
-              {msg.content}
-            </Text>
-          </View>
-        ))}
-
-        {/* Tarjeta de confirmación cuando la IA propone guardar algo */}
-        {pendingCommand && (
-          <View style={[styles.summaryCard, isDarkMode && styles.summaryCardDark]}>
-            <Text style={[styles.summaryTitle, isDarkMode && styles.textWhite]}>
-              {pendingCommand.action === 'create_fruit'
-                ? '¿Guardamos este recuerdo en tu árbol?'
-                : '¿Creamos esta nueva rama en tu árbol?'}
-            </Text>
-
-            {pendingCommand.action === 'create_fruit' ? (
-              <>
-                <Text style={[styles.summaryLabel, isDarkMode && styles.textLight]}>Título</Text>
-                <Text style={[styles.summaryValue, isDarkMode && styles.textWhite]}>
-                  {pendingCommand.data.title}
-                </Text>
-                <Text style={[styles.summaryLabel, isDarkMode && styles.textLight]}>Descripción</Text>
-                <Text style={[styles.summaryValue, isDarkMode && styles.textWhite]}>
-                  {pendingCommand.data.description}
-                </Text>
-              </>
-            ) : (
-              <>
-                <Text style={[styles.summaryLabel, isDarkMode && styles.textLight]}>Nombre de la rama</Text>
-                <Text style={[styles.summaryValue, isDarkMode && styles.textWhite]}>
-                  {pendingCommand.data.name}
-                </Text>
-                {pendingCommand.data.category && (
-                  <>
-                    <Text style={[styles.summaryLabel, isDarkMode && styles.textLight]}>Categoría</Text>
-                    <Text style={[styles.summaryValue, isDarkMode && styles.textWhite]}>
-                      {pendingCommand.data.category}
-                    </Text>
-                  </>
-                )}
-              </>
-            )}
-
-            <View style={styles.summaryActions}>
-              <TouchableOpacity
-                style={[styles.cancelBtn, isDarkMode && styles.cancelBtnDark]}
-                onPress={() => setPendingCommand(null)}
+              <Text
+                style={[
+                  styles.text,
+                  msg.role === 'user' ? styles.textWhite : isDarkMode ? styles.textWhite : styles.textBlack,
+                ]}
               >
-                <Text style={[styles.cancelText, isDarkMode && styles.textWhite]}>Más tarde</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.confirmBtn}
-                onPress={async () => {
-                  if (!pendingCommand) return;
-                  const cmd = pendingCommand;
-                  setPendingCommand(null);
-                  const note = await executeAICommand(cmd);
-                  if (note) {
-                    Alert.alert('Aviso', note);
-                  } else {
-                    Alert.alert(
-                      'Guardado',
-                      cmd.action === 'create_fruit'
-                        ? 'Tu recuerdo se ha añadido a tu árbol.'
-                        : 'Hemos creado una nueva rama en tu árbol.'
-                    );
-                  }
-                }}
-              >
-                <Text style={styles.confirmText}>Guardar</Text>
-              </TouchableOpacity>
+                {msg.content}
+              </Text>
             </View>
-          </View>
-        )}
+          ))}
 
-        {isLoading && <ActivityIndicator color={colors.primary} style={{ margin: 10 }} />}
-      </ScrollView>
+          {/* Tarjeta de confirmación cuando la IA propone guardar algo */}
+          {pendingCommand && (
+            <View style={[styles.summaryCard, isDarkMode && styles.summaryCardDark]}>
+              <Text style={[styles.summaryTitle, isDarkMode && styles.textWhite]}>
+                {pendingCommand.action === 'create_fruit'
+                  ? '¿Guardamos este recuerdo en tu árbol?'
+                  : '¿Creamos esta nueva rama en tu árbol?'}
+              </Text>
 
-      <View style={[styles.inputContainer, isDarkMode && styles.inputContainerDark]}>
-        <TextInput
-          style={[styles.input, isDarkMode && styles.inputDark]}
-          value={input}
-          onChangeText={setInput}
-          placeholder="Cuéntame un recuerdo..."
-          placeholderTextColor={isDarkMode ? '#777' : '#999'}
-          multiline
-        />
-        <TouchableOpacity onPress={handleSend} style={styles.sendBtn} disabled={isLoading}>
-          <Send size={20} color="#FFF" />
-        </TouchableOpacity>
-      </View>
-    </KeyboardAvoidingView>
+              {pendingCommand.action === 'create_fruit' ? (
+                <>
+                  <Text style={[styles.summaryLabel, isDarkMode && styles.textLight]}>Título</Text>
+                  <Text style={[styles.summaryValue, isDarkMode && styles.textWhite]}>
+                    {pendingCommand.data.title}
+                  </Text>
+                  <Text style={[styles.summaryLabel, isDarkMode && styles.textLight]}>Descripción</Text>
+                  <Text style={[styles.summaryValue, isDarkMode && styles.textWhite]}>
+                    {pendingCommand.data.description}
+                  </Text>
+                </>
+              ) : (
+                <>
+                  <Text style={[styles.summaryLabel, isDarkMode && styles.textLight]}>Nombre de la rama</Text>
+                  <Text style={[styles.summaryValue, isDarkMode && styles.textWhite]}>
+                    {pendingCommand.data.name}
+                  </Text>
+                  {pendingCommand.data.category && (
+                    <>
+                      <Text style={[styles.summaryLabel, isDarkMode && styles.textLight]}>Categoría</Text>
+                      <Text style={[styles.summaryValue, isDarkMode && styles.textWhite]}>
+                        {pendingCommand.data.category}
+                      </Text>
+                    </>
+                  )}
+                </>
+              )}
+
+              <View style={styles.summaryActions}>
+                <TouchableOpacity
+                  style={[styles.cancelBtn, isDarkMode && styles.cancelBtnDark]}
+                  onPress={() => setPendingCommand(null)}
+                >
+                  <Text style={[styles.cancelText, isDarkMode && styles.textWhite]}>Más tarde</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.confirmBtn}
+                  onPress={async () => {
+                    if (!pendingCommand) return;
+                    const cmd = pendingCommand;
+                    setPendingCommand(null);
+                    
+                    try {
+                      const note = await executeAICommand(cmd);
+                      if (note) {
+                        Alert.alert('Aviso', note);
+                      } else {
+                        Alert.alert(
+                          '¡Guardado!',
+                          cmd.action === 'create_fruit'
+                            ? 'Tu recuerdo se ha añadido a tu árbol.'
+                            : 'Hemos creado una nueva rama en tu árbol.'
+                        );
+                      }
+                    } catch (error: any) {
+                      Alert.alert('Error', error.message || 'No se pudo guardar. Inténtalo de nuevo.');
+                    }
+                  }}
+                >
+                  <Text style={styles.confirmText}>Guardar</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {isLoading && <ActivityIndicator color={colors.primary} style={{ margin: 10 }} />}
+        </ScrollView>
+
+        <View style={[styles.inputContainer, isDarkMode && styles.inputContainerDark]}>
+          <TextInput
+            style={[styles.input, isDarkMode && styles.inputDark]}
+            value={input}
+            onChangeText={setInput}
+            placeholder="Cuéntame un recuerdo..."
+            placeholderTextColor={isDarkMode ? '#777' : '#999'}
+            multiline
+          />
+          <TouchableOpacity onPress={handleSend} style={styles.sendBtn} disabled={isLoading}>
+            <Send size={20} color="#FFF" />
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
+    </>
   );
 }
 
