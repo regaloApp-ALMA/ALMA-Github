@@ -1,7 +1,7 @@
 import React, { memo, useMemo, useEffect } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity, Dimensions, ScrollView, ActivityIndicator, Share } from 'react-native';
 import { ReactNativeZoomableView } from '@openspacelabs/react-native-zoomable-view';
-import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
+import Svg, { Path, Defs, LinearGradient, Stop, Circle } from 'react-native-svg';
 import { useTreeStore } from '@/stores/treeStore';
 import { BranchType, RootType } from '@/types/tree';
 import { useRouter } from 'expo-router';
@@ -10,18 +10,21 @@ import { Sprout } from 'lucide-react-native';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// --- CONFIGURACIÓN DEL LIENZO (Diseño mejorado y orgánico) ---
+// --- CONFIGURACIÓN DEL LIENZO (Tu diseño exacto) ---
 const CANVAS_WIDTH = 1200;
 const CANVAS_HEIGHT = 1800;
 const CENTER_X = CANVAS_WIDTH / 2;
 const BASE_Y = CANVAS_HEIGHT - 200; // Base del tronco
 
-// Paleta de colores simple
+// Paleta de colores del diseño (Mejorada)
 const DESIGN_THEME = {
     bg: '#F3F0E9',        // Beige suave
-    trunk: '#795548',     // Marrón madera
+    trunk: '#8D6E63',     // Marrón cálido
+    trunkLight: '#A1887F',
+    trunkDark: '#6D4C41',
     ground: '#E0E0E0',    // Suelo sutil
     textDark: '#2D3436',
+    foliage: '#C8E6C9',   // Verde suave para toques de follaje
 };
 
 // --- COMPONENTES OPTIMIZADOS (Memorizados para rendimiento) ---
@@ -41,6 +44,8 @@ const BranchBubble = memo(({ branch, x, y, onPress, fruitCount }: { branch: Bran
             onPress={() => onPress(branch)}
             activeOpacity={0.8}
         >
+            {/* Borde blanco sutil */}
+            <View style={styles.branchBorder} />
             <Text style={styles.branchText} numberOfLines={2} adjustsFontSizeToFit>
                 {branch.name}
             </Text>
@@ -67,124 +72,88 @@ export default function Tree() {
     const { tree, isLoading, fetchMyTree } = useTreeStore();
     const router = useRouter();
 
-    // 🔄 CARGAR ÁRBOL AL MONTAR: SIEMPRE cargar al montar el componente
+    // 🔄 Cargar árbol al montar
     useEffect(() => {
-        console.log('🌳 Tree: Montado, cargando árbol...');
         fetchMyTree();
     }, []);
 
-    // 🔄 ACTUALIZAR CUANDO SE VUELVE A LA PANTALLA: Recargar árbol al enfocar
+    // 🔄 Recargar cuando vuelve a la pantalla
     useEffect(() => {
+        // @ts-ignore - addListener existe en tiempo de ejecución
         const unsubscribe = router.addListener?.('focus', () => {
-            console.log('🌳 Tree: Pantalla enfocada, recargando árbol...');
-            fetchMyTree(true); // Refresh cuando se vuelve a la pantalla
+            fetchMyTree(true);
         });
-
-        return () => {
-            if (unsubscribe) unsubscribe();
-        };
+        return () => { if (unsubscribe) unsubscribe(); };
     }, []);
 
-    // 🔍 DEBUG: Log del estado del árbol
-    useEffect(() => {
-        if (tree) {
-            console.log(`🌳 Tree DEBUG - Ramas: ${tree.branches?.length || 0}, Frutos: ${tree.fruits?.length || 0}`);
-            if (tree.branches && tree.branches.length > 0) {
-                console.log('🌳 Ramas encontradas:', tree.branches.map(b => ({ 
-                    name: b.name, 
-                    position: b.position,
-                    id: b.id 
-                })));
-            }
-        } else {
-            console.log('🌳 Tree DEBUG - No hay árbol cargado');
-        }
-    }, [tree]);
-
     // Cálculos geométricos (Optimizados con useMemo)
-    // 🔄 DEPENDENCIA: Se recalcula cuando cambia tree, branches o fruits
-    const { layoutBranches, trunkPath } = useMemo(() => {
-        if (!tree) {
-            console.log('🌳 useMemo: No hay árbol, retornando vacío');
-            return { layoutBranches: [], trunkPath: '' };
-        }
+    const { layoutBranches, trunkPath, foliageCircles } = useMemo(() => {
+        if (!tree) return { layoutBranches: [], trunkPath: '', foliageCircles: [] };
 
         const branches = tree.branches || [];
-        console.log(`🌳 Tree renderizando: ${branches.length} ramas, ${tree.fruits?.length || 0} frutos`);
 
-        // 1. DIBUJO DEL TRONCO (Simple y funcional)
+        // 1. DIBUJO DEL TRONCO (Más orgánico)
         const trunkWidth = 40;
-        const trunkHeight = 1000;
+        const trunkHeight = 900;
         const trunkTopY = BASE_Y - trunkHeight;
-        const trunkStartY = trunkTopY + 150; // Punto donde empiezan a salir las ramas
 
-        // Tronco simple y elegante
+        // Tronco con curvas suaves que se estrecha hacia arriba
         const trunkPath = `
             M ${CENTER_X - trunkWidth / 2} ${BASE_Y}
-            L ${CENTER_X - trunkWidth / 2} ${trunkTopY}
-            Q ${CENTER_X} ${trunkTopY - 10} ${CENTER_X + trunkWidth / 2} ${trunkTopY}
-            L ${CENTER_X + trunkWidth / 2} ${BASE_Y}
+            C ${CENTER_X - trunkWidth / 2 - 3} ${BASE_Y - 300}, ${CENTER_X - 15} ${trunkTopY + 100}, ${CENTER_X - 12} ${trunkTopY}
+            L ${CENTER_X + 12} ${trunkTopY}
+            C ${CENTER_X + 15} ${trunkTopY + 100}, ${CENTER_X + trunkWidth / 2 + 3} ${BASE_Y - 300}, ${CENTER_X + trunkWidth / 2} ${BASE_Y}
             Z
         `;
 
-        // 2. DIBUJO DE RAMAS (Diseño simple y funcional como la imagen)
-        
+        // 2. DIBUJO DE RAMAS (Curvas más naturales)
         const layoutBranches = branches.map((branch, i) => {
-            // Parsear position si es string
-            let branchPosition = branch.position || { x: 0, y: 0 };
-            if (typeof branchPosition === 'string') {
-                try {
-                    branchPosition = JSON.parse(branchPosition);
-                } catch (e) {
-                    branchPosition = { x: 0, y: 0 };
-                }
-            }
+            const isLeft = i % 2 === 0;
+            const sideMultiplier = isLeft ? -1 : 1;
 
-            // Diseño simple: ramas horizontales alternando lados
-            const hasCustomPosition = branchPosition && 
-                                     (branchPosition.x !== 0 || branchPosition.y !== 0);
-            
-            let endX: number, endY: number;
-            let startX: number, startY: number;
-            let isLeft: boolean;
-            
-            if (hasCustomPosition) {
-                // Usar posición guardada en BD
-                endX = CENTER_X + branchPosition.x;
-                endY = BASE_Y - 200 + branchPosition.y;
-                startX = CENTER_X;
-                startY = trunkStartY + (branchPosition.y * 0.3);
-                isLeft = branchPosition.x < 0;
-            } else {
-                // Distribución simple: alternar lados, espaciado vertical uniforme
-                isLeft = i % 2 === 0;
-                const sideMultiplier = isLeft ? -1 : 1;
-                const branchLength = 220; // Longitud fija
-                const verticalSpacing = 130; // Espaciado vertical
-                const branchHeight = trunkStartY - (i * verticalSpacing);
-                
-                endX = CENTER_X + (sideMultiplier * branchLength);
-                endY = branchHeight;
-                startX = CENTER_X;
-                startY = branchHeight;
-            }
+            // Distribución vertical
+            const verticalSpacing = 140;
+            const startY = BASE_Y - 250 - (i * verticalSpacing);
 
-            // Asegurar visibilidad
-            endX = Math.max(60, Math.min(CANVAS_WIDTH - 60, endX));
-            endY = Math.max(100, Math.min(CANVAS_HEIGHT - 250, endY));
-            startY = Math.max(trunkTopY, Math.min(trunkStartY + 300, startY));
+            // Posición final (Donde va la burbuja)
+            const branchLength = 220;
+            const endX = CENTER_X + (sideMultiplier * branchLength);
+            const endY = startY - 60;
 
-            // Rama horizontal simple (línea recta)
-            const path = `M ${startX} ${startY} L ${endX} ${endY}`;
+            // Curva Bézier mejorada (más natural)
+            const startX = CENTER_X;
+            const cp1x = CENTER_X + (sideMultiplier * 80); // Curva inicial suave
+            const cp1y = startY + 10;
+            const cp2x = endX - (sideMultiplier * 30);     // Curva final suave
+            const cp2y = endY + 30;
 
-            // Contar frutos
+            const path = `M ${startX} ${startY} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${endX} ${endY}`;
+
+            // Contamos los frutos en tiempo real desde el store
             const fruitCount = tree.fruits.filter(f => f.branchId === branch.id).length;
 
-            return { ...branch, x: endX, y: endY, path, fruitCount, isLeft };
+            return { ...branch, x: endX, y: endY, path, fruitCount };
         });
 
-        return { layoutBranches, trunkPath };
-    }, [tree, tree?.branches?.length, tree?.fruits?.length]); // 🔄 DEPENDENCIAS: Se recalcula cuando cambian ramas o frutos
+        // 3. FOLLAJE SUTIL (Solo algunos círculos detrás para dar vida)
+        const foliageCircles = layoutBranches.flatMap((branch, i) => {
+            // 2 círculos sutiles por rama
+            return [
+                {
+                    cx: branch.x + (branch.x < CENTER_X ? 40 : -40),
+                    cy: branch.y - 20,
+                    r: 50,
+                },
+                {
+                    cx: branch.x + (branch.x < CENTER_X ? 10 : -10),
+                    cy: branch.y + 10,
+                    r: 40,
+                }
+            ];
+        });
+
+        return { layoutBranches, trunkPath, foliageCircles };
+    }, [tree]); // Se recalcula automáticamente si el árbol cambia (ej: al borrar)
 
     return (
         <View style={styles.container}>
@@ -209,22 +178,36 @@ export default function Tree() {
                 <View style={styles.canvas}>
                     <Svg width={CANVAS_WIDTH} height={CANVAS_HEIGHT} style={StyleSheet.absoluteFill}>
                         <Defs>
-                            <LinearGradient id="groundGrad" x1="0" y1="0" x2="0" y2="1">
-                                <Stop offset="0" stopColor="#E0E0E0" stopOpacity="0.5" />
-                                <Stop offset="1" stopColor="#F3F0E9" stopOpacity="0" />
+                            {/* Degradado para el tronco */}
+                            <LinearGradient id="trunkGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+                                <Stop offset="0%" stopColor={DESIGN_THEME.trunkDark} />
+                                <Stop offset="50%" stopColor={DESIGN_THEME.trunk} />
+                                <Stop offset="100%" stopColor={DESIGN_THEME.trunkLight} />
                             </LinearGradient>
                         </Defs>
 
                         {/* Suelo */}
                         <Path
                             d={`M 0 ${BASE_Y} Q ${CENTER_X} ${BASE_Y - 80} ${CANVAS_WIDTH} ${BASE_Y} V ${CANVAS_HEIGHT} H 0 Z`}
-                            fill={DESIGN_THEME.ground}
+                            fill="#E8E6DC"
                         />
 
-                        {/* Tronco simple */}
-                        <Path d={trunkPath} fill={DESIGN_THEME.trunk} />
+                        {/* Follaje sutil detrás */}
+                        {foliageCircles.map((circle, idx) => (
+                            <Circle
+                                key={`foliage-${idx}`}
+                                cx={circle.cx}
+                                cy={circle.cy}
+                                r={circle.r}
+                                fill={DESIGN_THEME.foliage}
+                                opacity={0.3}
+                            />
+                        ))}
 
-                        {/* Ramas horizontales simples */}
+                        {/* Tronco con degradado */}
+                        <Path d={trunkPath} fill="url(#trunkGrad)" />
+
+                        {/* Ramas con curvas mejoradas */}
                         {layoutBranches.map((b) => (
                             <Path
                                 key={`path-${b.id}`}
@@ -306,29 +289,61 @@ const styles = StyleSheet.create({
         position: 'absolute', top: 100, left: 0, right: 0, zIndex: 100, alignItems: 'center',
     },
 
-    // Estilos Burbuja
+    // Estilos Burbuja (Mejorados)
     branchCircle: {
         width: 90, height: 90,
         borderRadius: 45,
         justifyContent: 'center', alignItems: 'center',
-        elevation: 5,
+        elevation: 8,
         shadowColor: '#000', 
-        shadowOffset: { width: 0, height: 2 }, 
-        shadowOpacity: 0.2, 
-        shadowRadius: 4,
+        shadowOffset: { width: 0, height: 4 }, 
+        shadowOpacity: 0.3, 
+        shadowRadius: 8,
+    },
+    branchBorder: {
+        position: 'absolute',
+        width: 94,
+        height: 94,
+        borderRadius: 47,
+        borderWidth: 2,
+        borderColor: 'rgba(255, 255, 255, 0.7)',
+        top: -2,
+        left: -2,
     },
     branchText: {
-        color: '#FFF', fontWeight: 'bold', fontSize: 14, textAlign: 'center', paddingHorizontal: 5,
+        color: '#FFF', 
+        fontWeight: 'bold', 
+        fontSize: 14, 
+        textAlign: 'center', 
+        paddingHorizontal: 5,
+        textShadowColor: 'rgba(0, 0, 0, 0.25)',
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 2,
     },
     badge: {
-        position: 'absolute', top: 0, right: 0,
-        backgroundColor: '#F5F5F5',
-        width: 28, height: 28, borderRadius: 14,
-        justifyContent: 'center', alignItems: 'center',
-        zIndex: 10, elevation: 6,
-        shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.2, shadowRadius: 2,
+        position: 'absolute', 
+        top: -4, 
+        right: -4,
+        backgroundColor: '#FFF',
+        width: 30, 
+        height: 30, 
+        borderRadius: 15,
+        justifyContent: 'center', 
+        alignItems: 'center',
+        zIndex: 10, 
+        elevation: 8,
+        shadowColor: '#000', 
+        shadowOffset: { width: 0, height: 2 }, 
+        shadowOpacity: 0.25, 
+        shadowRadius: 3,
+        borderWidth: 1.5,
+        borderColor: '#E8E8E8',
     },
-    badgeText: { color: '#333', fontWeight: 'bold', fontSize: 12 },
+    badgeText: { 
+        color: '#333', 
+        fontWeight: 'bold', 
+        fontSize: 12 
+    },
 
     // Panel Inferior
     bottomPanel: {
