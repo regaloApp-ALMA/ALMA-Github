@@ -3,13 +3,47 @@ import { supabase } from '@/lib/supabase';
 import { TreeType, BranchType, FruitType, RootType } from '@/types/tree';
 import { useUserStore } from './userStore';
 
+export type PendingInvitation = {
+  id: string;
+  tree_id: string;
+  granter_id: string;
+  sender: {
+    name: string;
+    avatar_url: string | null;
+  };
+  scope: 'all' | 'custom';
+  allowed_branch_ids: string[] | null;
+  created_at: string;
+};
+
 interface TreeState {
   tree: TreeType | null;
   isLoading: boolean;
   isRefreshing: boolean;
   error: string | null;
+  pendingInvitations: PendingInvitation[];
+  sharedTree: TreeType | null; // Árbol compartido que estamos viendo
+  viewingTree: TreeType | null; // Árbol que estamos visualizando (separado de sharedTree)
+  deletionRequests: Array<{
+    id: string;
+    user_id: string;
+    requester: {
+      name: string;
+      avatar_url: string | null;
+    };
+    relation: string;
+    created_at: string;
+  }>; // Solicitudes de eliminación recibidas
 
   fetchMyTree: (isRefresh?: boolean) => Promise<void>;
+  fetchPendingInvitations: () => Promise<void>;
+  acceptInvitation: (invitationId: string, granterId: string) => Promise<void>;
+  rejectInvitation: (invitationId: string) => Promise<void>;
+  fetchSharedTree: (relativeIdOrTreeId: string, isTreeId?: boolean) => Promise<void>;
+  updateRootRelation: (connectionId: string, newRelation: string) => Promise<void>;
+  requestRemoveRoot: (rootId: string) => Promise<void>;
+  fetchDeletionRequests: () => Promise<void>;
+  confirmRemoveRoot: (connectionId: string) => Promise<void>;
 
   // CORRECCIÓN AQUÍ: Actualizamos la definición para aceptar 'position'
   addBranch: (branch: {
@@ -34,6 +68,10 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   isLoading: false,
   isRefreshing: false,
   error: null,
+  pendingInvitations: [],
+  sharedTree: null,
+  viewingTree: null,
+  deletionRequests: [],
 
   fetchMyTree: async (isRefresh = false) => {
     const userId = useUserStore.getState().user?.id;
@@ -164,10 +202,10 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         console.log('ℹ️ No hay ramas, no se pueden cargar frutos');
       }
 
-      // 4. Obtener Raíces (Familiares)
+      // 4. Obtener Raíces (Familiares) - Incluir status
       const { data: rootsData } = await supabase
         .from('family_connections')
-        .select(`id, relation, created_at, relative:profiles!relative_id (name)`)
+        .select(`id, relation, created_at, status, relative:profiles!relative_id (name)`)
         .eq('user_id', userId);
 
       const formattedRoots: RootType[] = (rootsData || []).map((r: any) => ({
@@ -175,7 +213,8 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         name: r.relative?.name || 'Familiar',
         relation: r.relation || 'Raíz',
         createdAt: r.created_at,
-        treeId: treeData.id
+        treeId: treeData.id,
+        status: r.status || 'active' // Incluir status, default 'active' para compatibilidad
       }));
 
       const updatedTree = {
@@ -522,13 +561,542 @@ export const useTreeStore = create<TreeState>((set, get) => ({
     }
 
     try {
+      // 🗑️ PASO 1: Obtener el fruto con sus media_urls antes de borrarlo
+      const { data: fruitData, error: fetchError } = await supabase
+        .from('fruits')
+        .select('media_urls')
+        .eq('id', fruitId)
+        .single();
+
+      if (fetchError) {
+        console.error('❌ Error obteniendo fruto para borrar:', fetchError);
+        throw fetchError;
+      }
+
+      // 🗑️ PASO 2: Si tiene URLs de medios, borrar los archivos del storage
+      if (fruitData?.media_urls && Array.isArray(fruitData.media_urls) && fruitData.media_urls.length > 0) {
+        const filePaths: string[] = [];
+
+        fruitData.media_urls.forEach((url: string) => {
+          try {
+            // Extraer la ruta relativa del archivo desde la URL completa
+            // Formato esperado: https://[project].supabase.co/storage/v1/object/public/memories/[ruta]
+            // O: https://[project].supabase.co/storage/v1/object/sign/memories/[ruta]?...
+            
+            // Buscar el patrón '/memories/' en la URL
+            const memoriesIndex = url.indexOf('/memories/');
+            if (memoriesIndex !== -1) {
+              // Extraer todo lo que viene después de '/memories/'
+              let filePath = url.substring(memoriesIndex + '/memories/'.length);
+              
+              // Si hay query params (como ?token=...), eliminarlos
+              const queryIndex = filePath.indexOf('?');
+              if (queryIndex !== -1) {
+                filePath = filePath.substring(0, queryIndex);
+              }
+              
+              // Decodificar la URL si está codificada
+              filePath = decodeURIComponent(filePath);
+              
+              if (filePath) {
+                filePaths.push(filePath);
+                console.log(`📁 Archivo a borrar: ${filePath}`);
+              }
+            } else {
+              console.warn(`⚠️ URL no contiene '/memories/': ${url}`);
+            }
+          } catch (urlError) {
+            console.error('❌ Error procesando URL:', url, urlError);
+          }
+        });
+
+        // Borrar archivos del storage si hay rutas válidas
+        if (filePaths.length > 0) {
+          console.log(`🗑️ Borrando ${filePaths.length} archivo(s) del storage...`);
+          const { data: deleteData, error: storageError } = await supabase
+            .storage
+            .from('memories')
+            .remove(filePaths);
+
+          if (storageError) {
+            console.error('⚠️ Error borrando archivos del storage (continuando con borrado de registro):', storageError);
+            // No lanzar error aquí, continuar con el borrado del registro
+          } else {
+            console.log(`✅ ${deleteData?.length || 0} archivo(s) borrado(s) del storage`);
+          }
+        }
+      }
+
+      // 🗑️ PASO 3: Borrar el registro de la tabla fruits
       const { error } = await supabase.from('fruits').delete().eq('id', fruitId);
       if (error) throw error;
 
+      console.log('✅ Fruto borrado exitosamente (registro + archivos)');
+
     } catch (error: any) {
-      console.error('Error deleting fruit:', error);
+      console.error('❌ Error deleting fruit:', error);
       set({ tree: previousTree, error: 'No se pudo borrar el recuerdo.' });
       get().fetchMyTree();
+      throw error;
     }
-  }
+  },
+
+  // 📬 FUNCIONES DE INVITACIONES
+  fetchPendingInvitations: async () => {
+    const userId = useUserStore.getState().user?.id;
+    if (!userId) return;
+
+    try {
+      // 1. Obtener todas las invitaciones donde soy el receptor
+      const { data: invitations, error: invitationsError } = await supabase
+        .from('tree_permissions')
+        .select(`
+          id,
+          tree_id,
+          granter_id,
+          scope,
+          allowed_branch_ids,
+          created_at,
+          sender:profiles!granter_id (name, avatar_url)
+        `)
+        .eq('recipient_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (invitationsError) {
+        console.error('❌ Error obteniendo invitaciones:', invitationsError);
+        set({ pendingInvitations: [] });
+        return;
+      }
+
+      // 2. Obtener mis raíces actuales para filtrar invitaciones ya aceptadas
+      const { data: myRoots } = await supabase
+        .from('family_connections')
+        .select('relative_id')
+        .eq('user_id', userId);
+
+      const acceptedGranterIds = new Set((myRoots || []).map((r: any) => r.relative_id));
+
+      // 3. Filtrar: solo mostrar invitaciones de personas que NO están en mis raíces
+      const pending = (invitations || [])
+        .filter((inv: any) => {
+          const granterId = inv.granter_id;
+          return granterId && !acceptedGranterIds.has(granterId);
+        })
+        .map((inv: any) => ({
+          id: inv.id,
+          tree_id: inv.tree_id,
+          granter_id: inv.granter_id,
+          sender: {
+            name: inv.sender?.name || 'Usuario',
+            avatar_url: inv.sender?.avatar_url || null,
+          },
+          scope: inv.scope || 'all',
+          allowed_branch_ids: inv.allowed_branch_ids || null,
+          created_at: inv.created_at,
+        }));
+
+      console.log(`✅ Invitaciones pendientes encontradas: ${pending.length}`);
+      set({ pendingInvitations: pending });
+    } catch (error: any) {
+      console.error('❌ Error en fetchPendingInvitations:', error);
+      set({ pendingInvitations: [] });
+    }
+  },
+
+  acceptInvitation: async (invitationId: string, granterId: string) => {
+    const userId = useUserStore.getState().user?.id;
+    if (!userId) throw new Error('Usuario no autenticado');
+
+    try {
+      // 1. Crear conexión familiar (añadir como raíz)
+      const { error: connectionError } = await supabase
+        .from('family_connections')
+        .insert({
+          user_id: userId,
+          relative_id: granterId,
+          relation: 'Familiar',
+        });
+
+      if (connectionError) {
+        // Si ya existe la conexión, no es un error crítico
+        if (!connectionError.message?.includes('duplicate') && !connectionError.message?.includes('unique')) {
+          console.error('❌ Error creando conexión familiar:', connectionError);
+          throw connectionError;
+        }
+        console.log('ℹ️ La conexión familiar ya existía');
+      }
+
+      // 2. Recargar árbol y limpiar invitaciones
+      await get().fetchMyTree(true);
+      await get().fetchPendingInvitations();
+
+      console.log('✅ Invitación aceptada exitosamente');
+    } catch (error: any) {
+      console.error('❌ Error aceptando invitación:', error);
+      throw error;
+    }
+  },
+
+  rejectInvitation: async (invitationId: string) => {
+    const userId = useUserStore.getState().user?.id;
+    if (!userId) throw new Error('Usuario no autenticado');
+
+    try {
+      // Verificar que la invitación es para este usuario
+      const { data: invitation, error: fetchError } = await supabase
+        .from('tree_permissions')
+        .select('id, recipient_id')
+        .eq('id', invitationId)
+        .eq('recipient_id', userId)
+        .single();
+
+      if (fetchError || !invitation) {
+        throw new Error('Invitación no encontrada o inválida');
+      }
+
+      // Eliminar el permiso
+      const { error: deleteError } = await supabase
+        .from('tree_permissions')
+        .delete()
+        .eq('id', invitationId);
+
+      if (deleteError) {
+        console.error('❌ Error rechazando invitación:', deleteError);
+        throw deleteError;
+      }
+
+      console.log('✅ Invitación rechazada exitosamente');
+      await get().fetchPendingInvitations();
+    } catch (error: any) {
+      console.error('❌ Error en rejectInvitation:', error);
+      throw error;
+    }
+  },
+
+  fetchSharedTree: async (relativeIdOrTreeId: string, isTreeId: boolean = false) => {
+    const userId = useUserStore.getState().user?.id;
+    if (!userId) throw new Error('Usuario no autenticado');
+
+    try {
+      set({ isLoading: true, error: null });
+
+      let treeData: any;
+
+      if (isTreeId) {
+        // Si es treeId, obtener directamente
+        const { data: treesData, error: treeError } = await supabase
+          .from('trees')
+          .select('*')
+          .eq('id', relativeIdOrTreeId)
+          .single();
+
+        if (treeError) {
+          console.error('❌ Error obteniendo árbol compartido:', treeError);
+          throw treeError;
+        }
+
+        if (!treesData) {
+          set({ sharedTree: null, viewingTree: null, isLoading: false });
+          return;
+        }
+
+        treeData = treesData;
+      } else {
+        // Si es relativeId, obtener el árbol del familiar
+        const { data: treesData, error: treeError } = await supabase
+          .from('trees')
+          .select('*')
+          .eq('owner_id', relativeIdOrTreeId)
+          .order('created_at', { ascending: true })
+          .limit(1);
+
+        if (treeError) {
+          console.error('❌ Error obteniendo árbol compartido:', treeError);
+          throw treeError;
+        }
+
+        if (!treesData || treesData.length === 0) {
+          set({ sharedTree: null, viewingTree: null, isLoading: false });
+          return;
+        }
+
+        treeData = treesData[0];
+      }
+
+      // 2. Obtener permisos para este árbol
+      const { data: permissions, error: permError } = await supabase
+        .from('tree_permissions')
+        .select('scope, allowed_branch_ids')
+        .eq('tree_id', treeData.id)
+        .eq('recipient_id', userId)
+        .single();
+
+      if (permError && permError.code !== 'PGRST116') { // PGRST116 = no rows returned
+        console.error('❌ Error obteniendo permisos:', permError);
+        throw permError;
+      }
+
+      const scope = permissions?.scope || 'all';
+      const allowedBranchIds = permissions?.allowed_branch_ids || null;
+
+      // 3. Obtener ramas (filtrar según permisos)
+      let branchesQuery = supabase
+        .from('branches')
+        .select('*')
+        .eq('tree_id', treeData.id);
+
+      // Si el scope es 'custom', solo obtener ramas permitidas
+      if (scope === 'custom' && allowedBranchIds && allowedBranchIds.length > 0) {
+        branchesQuery = branchesQuery.in('id', allowedBranchIds);
+      }
+
+      const { data: branches, error: branchesError } = await branchesQuery.order('created_at', { ascending: true });
+
+      if (branchesError) {
+        console.error('❌ Error obteniendo ramas compartidas:', branchesError);
+        throw branchesError;
+      }
+
+      const formattedBranches: BranchType[] = (branches || []).map((b: any) => {
+        let position = { x: 0, y: 0 };
+        if (b.position) {
+          if (typeof b.position === 'string') {
+            try {
+              position = JSON.parse(b.position);
+            } catch (e) {
+              position = { x: 0, y: 0 };
+            }
+          } else if (typeof b.position === 'object') {
+            position = b.position;
+          }
+        }
+
+        return {
+          id: b.id,
+          name: b.name,
+          categoryId: b.category,
+          color: b.color,
+          createdAt: b.created_at,
+          isShared: b.is_shared,
+          position: position,
+        };
+      });
+
+      // 4. Obtener frutos de las ramas permitidas
+      const branchIds = formattedBranches.map(b => b.id);
+      let formattedFruits: FruitType[] = [];
+
+      if (branchIds.length > 0) {
+        // Filtrar frutos: solo los que están en ramas compartidas Y que están marcados como compartidos
+        const { data: fruits, error: fruitsError } = await supabase
+          .from('fruits')
+          .select('*')
+          .in('branch_id', branchIds)
+          .eq('is_shared', true) // Solo frutos compartidos
+          .order('created_at', { ascending: false });
+
+        if (fruitsError) {
+          console.error('❌ Error obteniendo frutos compartidos:', fruitsError);
+          throw fruitsError;
+        }
+
+        formattedFruits = (fruits || []).map((f: any) => ({
+          id: f.id,
+          title: f.title,
+          description: f.description || '',
+          branchId: f.branch_id,
+          mediaUrls: f.media_urls || [],
+          createdAt: f.created_at,
+          isShared: f.is_shared || false,
+          position: f.position || { x: 0, y: 0 },
+        }));
+      }
+
+      // 5. Obtener información del dueño del árbol
+      const { data: ownerProfile } = await supabase
+        .from('profiles')
+        .select('name, avatar_url')
+        .eq('id', treeData.owner_id)
+        .single();
+
+      const sharedTree: TreeType = {
+        id: treeData.id,
+        ownerId: treeData.owner_id,
+        name: ownerProfile?.name || 'Árbol Familiar',
+        createdAt: treeData.created_at,
+        branches: formattedBranches,
+        fruits: formattedFruits,
+        roots: [], // No mostramos raíces del árbol compartido
+      };
+
+      console.log(`✅ Árbol compartido cargado: ${formattedBranches.length} ramas, ${formattedFruits.length} frutos`);
+      set({ sharedTree, viewingTree: sharedTree, isLoading: false, error: null });
+    } catch (error: any) {
+      console.error('❌ Error en fetchSharedTree:', error);
+      set({ error: error.message || 'No se pudo cargar el árbol compartido', isLoading: false, sharedTree: null, viewingTree: null });
+      throw error;
+    }
+  },
+
+  updateRootRelation: async (connectionId: string, newRelation: string) => {
+    const userId = useUserStore.getState().user?.id;
+    if (!userId) throw new Error('Usuario no autenticado');
+
+    try {
+      // Verificar que la conexión pertenece al usuario
+      const { data: connection, error: fetchError } = await supabase
+        .from('family_connections')
+        .select('id, user_id')
+        .eq('id', connectionId)
+        .eq('user_id', userId)
+        .single();
+
+      if (fetchError || !connection) {
+        throw new Error('Conexión no encontrada o inválida');
+      }
+
+      // Actualizar la relación
+      const { error: updateError } = await supabase
+        .from('family_connections')
+        .update({ relation: newRelation.trim() })
+        .eq('id', connectionId);
+
+      if (updateError) {
+        console.error('❌ Error actualizando relación:', updateError);
+        throw updateError;
+      }
+
+      console.log('✅ Relación actualizada exitosamente');
+      await get().fetchMyTree(true);
+    } catch (error: any) {
+      console.error('❌ Error en updateRootRelation:', error);
+      throw error;
+    }
+  },
+
+  // 🗑️ FUNCIONES DE ELIMINACIÓN SEGURA DE RAÍCES
+  requestRemoveRoot: async (rootId: string) => {
+    const userId = useUserStore.getState().user?.id;
+    if (!userId) throw new Error('Usuario no autenticado');
+
+    try {
+      // Actualizar status a 'pending_deletion' en lugar de borrar
+      const { error } = await supabase
+        .from('family_connections')
+        .update({ status: 'pending_deletion' })
+        .eq('id', rootId)
+        .eq('user_id', userId); // Solo el dueño puede solicitar eliminación
+
+      if (error) {
+        console.error('❌ Error solicitando eliminación de raíz:', error);
+        throw error;
+      }
+
+      console.log('✅ Solicitud de eliminación creada para raíz:', rootId);
+
+      // Actualizar estado local
+      const currentTree = get().tree;
+      if (currentTree) {
+        const updatedRoots = currentTree.roots.map(root =>
+          root.id === rootId ? { ...root, status: 'pending_deletion' as const } : root
+        );
+        set({
+          tree: {
+            ...currentTree,
+            roots: updatedRoots
+          }
+        });
+      }
+
+      // Recargar árbol para sincronizar
+      await get().fetchMyTree(true);
+    } catch (error: any) {
+      console.error('❌ Error en requestRemoveRoot:', error);
+      throw error;
+    }
+  },
+
+  fetchDeletionRequests: async () => {
+    const userId = useUserStore.getState().user?.id;
+    if (!userId) return;
+
+    try {
+      // Buscar conexiones donde YO soy el relative_id y el status es 'pending_deletion'
+      const { data: requests, error } = await supabase
+        .from('family_connections')
+        .select(`
+          id,
+          user_id,
+          relation,
+          created_at,
+          requester:profiles!user_id (name, avatar_url)
+        `)
+        .eq('relative_id', userId)
+        .eq('status', 'pending_deletion')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('❌ Error obteniendo solicitudes de eliminación:', error);
+        set({ deletionRequests: [] });
+        return;
+      }
+
+      const formatted = (requests || []).map((r: any) => ({
+        id: r.id,
+        user_id: r.user_id,
+        requester: {
+          name: r.requester?.name || 'Usuario',
+          avatar_url: r.requester?.avatar_url || null,
+        },
+        relation: r.relation || 'Familiar',
+        created_at: r.created_at,
+      }));
+
+      console.log(`✅ Solicitudes de eliminación encontradas: ${formatted.length}`);
+      set({ deletionRequests: formatted });
+    } catch (error: any) {
+      console.error('❌ Error en fetchDeletionRequests:', error);
+      set({ deletionRequests: [] });
+    }
+  },
+
+  confirmRemoveRoot: async (connectionId: string) => {
+    const userId = useUserStore.getState().user?.id;
+    if (!userId) throw new Error('Usuario no autenticado');
+
+    try {
+      // Verificar que la solicitud existe y es para este usuario
+      const { data: connection, error: fetchError } = await supabase
+        .from('family_connections')
+        .select('id, relative_id, status')
+        .eq('id', connectionId)
+        .eq('relative_id', userId)
+        .eq('status', 'pending_deletion')
+        .single();
+
+      if (fetchError || !connection) {
+        throw new Error('Solicitud de eliminación no encontrada o inválida');
+      }
+
+      // Borrar definitivamente la conexión
+      const { error: deleteError } = await supabase
+        .from('family_connections')
+        .delete()
+        .eq('id', connectionId);
+
+      if (deleteError) {
+        console.error('❌ Error confirmando eliminación:', deleteError);
+        throw deleteError;
+      }
+
+      console.log('✅ Eliminación confirmada y conexión borrada:', connectionId);
+
+      // Recargar solicitudes y árbol
+      await get().fetchDeletionRequests();
+      await get().fetchMyTree(true);
+    } catch (error: any) {
+      console.error('❌ Error en confirmRemoveRoot:', error);
+      throw error;
+    }
+  },
 }));

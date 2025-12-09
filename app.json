@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Árbol de Vida ALMA Clone",
-    "slug": "arbol-de-vida-alma-k2bf03xp",
+    "name": "ALMA",
+    "slug": "alma-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "myapp",
+    "scheme": "alma",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
@@ -25,7 +25,8 @@
       "package": "app.rork.arbol-de-vida-alma-k2bf03xp"
     },
     "web": {
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "title": "ALMA: Tu legado digital"
     },
     "plugins": [
       [

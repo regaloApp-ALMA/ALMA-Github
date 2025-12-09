@@ -49,6 +49,12 @@ export default function ShareTreeScreen() {
       return;
     }
 
+    // 🛡️ BLOQUEO DE AUTO-COMPARTIR
+    if (email.toLowerCase().trim() === user?.email?.toLowerCase()) {
+      Alert.alert('Error', 'No puedes compartir el árbol contigo mismo.');
+      return;
+    }
+
     // Si no se comparte el árbol completo, debe haber al menos una rama seleccionada
     if (!shareAll && selectedBranchIds.length === 0) {
       Alert.alert('Selecciona ramas', 'Elige al menos una rama para compartir.');

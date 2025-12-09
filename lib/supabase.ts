@@ -11,5 +11,7 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: false,
+        // Manejar errores de refresh token silenciosamente
+        flowType: 'pkce',
     },
 });

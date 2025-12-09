@@ -20,6 +20,8 @@ export default function TimeCapsuleScreen() {
   const [message, setMessage] = useState('');
   const [unlockDate, setUnlockDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [pickerMode, setPickerMode] = useState<'date' | 'time' | 'datetime'>('date');
   const [recipients, setRecipients] = useState('');
   const [includeMedia, setIncludeMedia] = useState(false);
   const [mediaUrl, setMediaUrl] = useState('');
@@ -30,14 +32,78 @@ export default function TimeCapsuleScreen() {
   // --- LÓGICA ---
 
   const handleDateChange = (event: any, selectedDate?: Date) => {
-    const currentDate = selectedDate || unlockDate;
-    setShowDatePicker(Platform.OS === 'ios');
-    setUnlockDate(currentDate);
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+      setShowTimePicker(false);
+      if (event.type === 'set' && selectedDate) {
+        // En Android, combinamos fecha y hora
+        const newDate = new Date(selectedDate);
+        if (pickerMode === 'date') {
+          // Si es selector de fecha, mantener la hora actual
+          newDate.setHours(unlockDate.getHours());
+          newDate.setMinutes(unlockDate.getMinutes());
+          setUnlockDate(newDate);
+          // Después de seleccionar fecha, mostrar selector de hora
+          setTimeout(() => {
+            setPickerMode('time');
+            setShowTimePicker(true);
+          }, 300);
+        } else if (pickerMode === 'time') {
+          // Si es selector de hora, mantener la fecha actual
+          newDate.setFullYear(unlockDate.getFullYear());
+          newDate.setMonth(unlockDate.getMonth());
+          newDate.setDate(unlockDate.getDate());
+          setUnlockDate(newDate);
+        }
+      }
+    } else {
+      // iOS: usar modo datetime directamente
+      const currentDate = selectedDate || unlockDate;
+      setShowDatePicker(false);
+      if (event.type === 'set' && selectedDate) {
+        setUnlockDate(currentDate);
+      }
+    }
   };
 
   const showDatepicker = () => {
-    setShowDatePicker(true);
+    if (Platform.OS === 'ios') {
+      setPickerMode('datetime');
+      setShowDatePicker(true);
+    } else {
+      // Android: primero fecha
+      setPickerMode('date');
+      setShowDatePicker(true);
+    }
   };
+
+  const showTimepicker = () => {
+    if (Platform.OS === 'ios') {
+      setPickerMode('datetime');
+      setShowDatePicker(true);
+    } else {
+      // Android: solo hora
+      setPickerMode('time');
+      setShowTimePicker(true);
+    }
+  };
+
+  // Formatear fecha y hora para mostrar
+  const formatDateTime = (date: Date) => {
+    const dateStr = date.toLocaleDateString('es-ES', { 
+      day: 'numeric', 
+      month: 'short', 
+      year: 'numeric' 
+    });
+    const timeStr = date.toLocaleTimeString('es-ES', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
+    return { dateStr, timeStr };
+  };
+
+  const { dateStr, timeStr } = formatDateTime(unlockDate);
 
   const handleAddMedia = () => {
     // Simulación: en una app real abriría la galería
@@ -74,9 +140,10 @@ export default function TimeCapsuleScreen() {
         unlockDate: unlockDate.toISOString()
       });
 
+      const { dateStr, timeStr } = formatDateTime(unlockDate);
       Alert.alert(
         'Cápsula Sellada',
-        `Se ha guardado correctamente y se abrirá el ${unlockDate.toLocaleDateString()}.`,
+        `Se ha guardado correctamente y se abrirá el ${dateStr} a las ${timeStr}.`,
         [{ text: 'OK', onPress: () => router.back() }]
       );
 
@@ -142,21 +209,47 @@ export default function TimeCapsuleScreen() {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={[styles.label, isDarkMode && styles.labelDark]}>Fecha de apertura</Text>
-            <TouchableOpacity
-              style={[styles.datePickerButton, isDarkMode && styles.datePickerButtonDark]}
-              onPress={showDatepicker}
-            >
-              <Calendar size={20} color={isDarkMode ? colors.white : colors.text} />
-              <Text style={[styles.dateText, isDarkMode && styles.dateTextDark]}>
-                {unlockDate.toLocaleDateString()}
-              </Text>
-            </TouchableOpacity>
+            <Text style={[styles.label, isDarkMode && styles.labelDark]}>Fecha y hora de apertura</Text>
+            
+            {/* Botones separados para Android, combinado para iOS */}
+            {Platform.OS === 'android' ? (
+              <View style={styles.dateTimeButtonsContainer}>
+                <TouchableOpacity
+                  style={[styles.datePickerButton, isDarkMode && styles.datePickerButtonDark]}
+                  onPress={showDatepicker}
+                >
+                  <Calendar size={20} color={isDarkMode ? colors.white : colors.text} />
+                  <Text style={[styles.dateText, isDarkMode && styles.dateTextDark]}>
+                    📅 Fecha: {dateStr}
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.datePickerButton, isDarkMode && styles.datePickerButtonDark]}
+                  onPress={showTimepicker}
+                >
+                  <Clock size={20} color={isDarkMode ? colors.white : colors.text} />
+                  <Text style={[styles.dateText, isDarkMode && styles.dateTextDark]}>
+                    ⏰ Hora: {timeStr}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[styles.datePickerButton, isDarkMode && styles.datePickerButtonDark]}
+                onPress={showDatepicker}
+              >
+                <Calendar size={20} color={isDarkMode ? colors.white : colors.text} />
+                <Text style={[styles.dateText, isDarkMode && styles.dateTextDark]}>
+                  {dateStr} a las {timeStr}
+                </Text>
+              </TouchableOpacity>
+            )}
 
             {showDatePicker && (
               <DateTimePicker
                 value={unlockDate}
-                mode="date"
+                mode={Platform.OS === 'ios' ? 'datetime' : pickerMode}
                 display="default"
                 onChange={handleDateChange}
                 minimumDate={minDate}
@@ -164,8 +257,18 @@ export default function TimeCapsuleScreen() {
               />
             )}
 
+            {showTimePicker && Platform.OS === 'android' && (
+              <DateTimePicker
+                value={unlockDate}
+                mode="time"
+                display="default"
+                onChange={handleDateChange}
+                themeVariant={isDarkMode ? 'dark' : 'light'}
+              />
+            )}
+
             <Text style={[styles.helperText, isDarkMode && styles.helperTextDark]}>
-              La cápsula se abrirá automáticamente en esta fecha
+              La cápsula se abrirá automáticamente el {dateStr} a las {timeStr}
             </Text>
           </View>
         </View>
@@ -387,6 +490,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#333',
     borderColor: '#444',
     color: colors.white,
+  },
+  dateTimeButtonsContainer: {
+    gap: 12,
   },
   datePickerButton: {
     flexDirection: 'row',

@@ -25,6 +25,9 @@ interface UserState {
   
   // Función auxiliar para crear perfil si no existe
   ensureProfile: (userId: string, email: string, name?: string, avatarUrl?: string) => Promise<UserType | null>;
+  
+  // Función auxiliar para limpiar sesión inválida
+  clearInvalidSession: () => Promise<void>;
 }
 
 export const useUserStore = create<UserState>((set, get) => ({
@@ -33,6 +36,19 @@ export const useUserStore = create<UserState>((set, get) => ({
   isLoading: false,
   isAuthenticated: false,
   error: null,
+
+  // Función auxiliar para limpiar sesión inválida
+  clearInvalidSession: async () => {
+    try {
+      console.log('🧹 Limpiando sesión inválida...');
+      await supabase.auth.signOut();
+      set({ session: null, user: null, isAuthenticated: false, error: null });
+    } catch (error) {
+      console.error('Error limpiando sesión:', error);
+      // Forzar limpieza del estado incluso si falla el signOut
+      set({ session: null, user: null, isAuthenticated: false, error: null });
+    }
+  },
 
   // Función auxiliar para crear perfil si no existe (VERSIÓN ROBUSTA)
   ensureProfile: async (userId: string, email: string, name?: string, avatarUrl?: string) => {
@@ -177,45 +193,91 @@ export const useUserStore = create<UserState>((set, get) => ({
 
   initialize: async () => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      // Intentar obtener la sesión actual
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+      // Si hay error de refresh token inválido, limpiar sesión
+      if (sessionError) {
+        console.warn('⚠️ Error obteniendo sesión:', sessionError.message);
+        
+        // Si es error de refresh token inválido, limpiar todo
+        if (sessionError.message?.includes('Refresh Token') || 
+            sessionError.message?.includes('Invalid Refresh Token') ||
+            sessionError.message?.includes('refresh_token_not_found')) {
+          await get().clearInvalidSession();
+          return;
+        }
+      }
 
       if (session) {
-        const profile = await get().ensureProfile(
-          session.user.id,
-          session.user.email || '',
-          (session.user.user_metadata as any)?.name,
-          (session.user.user_metadata as any)?.avatar_url
-        );
+        // Verificar que la sesión sea válida
+        try {
+          const profile = await get().ensureProfile(
+            session.user.id,
+            session.user.email || '',
+            (session.user.user_metadata as any)?.name,
+            (session.user.user_metadata as any)?.avatar_url
+          );
 
-        set({
-          session: profile ? session : null,
-          user: profile,
-          isAuthenticated: !!profile,
-        });
+          set({
+            session: profile ? session : null,
+            user: profile,
+            isAuthenticated: !!profile,
+            error: null,
+          });
+        } catch (profileError: any) {
+          console.error('❌ Error obteniendo perfil:', profileError);
+          // Si falla, limpiar sesión
+          await get().clearInvalidSession();
+        }
       } else {
-        set({ session: null, user: null, isAuthenticated: false });
+        set({ session: null, user: null, isAuthenticated: false, error: null });
       }
-    } catch (error) {
-      console.error('Error inicializando:', error);
+    } catch (error: any) {
+      console.error('❌ Error inicializando:', error);
+      
+      // Si es error de refresh token, limpiar sesión
+      if (error?.message?.includes('Refresh Token') || 
+          error?.message?.includes('Invalid Refresh Token') ||
+          error?.message?.includes('refresh_token_not_found')) {
+        await get().clearInvalidSession();
+      } else {
+        set({ error: error?.message || 'Error al inicializar sesión' });
+      }
     }
 
-    // Listener para cambios de autenticación
+    // Listener para cambios de autenticación con manejo de errores
     supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
-      if (event === 'SIGNED_OUT' || !session) {
-        set({ user: null, session: null, isAuthenticated: false });
-      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
-        const profile = await get().ensureProfile(
-          session.user.id,
-          session.user.email || '',
-          (session.user.user_metadata as any)?.name,
-          (session.user.user_metadata as any)?.avatar_url
-        );
+      try {
+        if (event === 'SIGNED_OUT' || !session) {
+          set({ user: null, session: null, isAuthenticated: false, error: null });
+        } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          // Verificar que la sesión sea válida antes de usarla
+          if (session?.user) {
+            const profile = await get().ensureProfile(
+              session.user.id,
+              session.user.email || '',
+              (session.user.user_metadata as any)?.name,
+              (session.user.user_metadata as any)?.avatar_url
+            );
 
-        set({
-          session: profile ? session : null,
-          user: profile,
-          isAuthenticated: !!profile,
-        });
+            set({
+              session: profile ? session : null,
+              user: profile,
+              isAuthenticated: !!profile,
+              error: null,
+            });
+          }
+        }
+      } catch (error: any) {
+        console.error('❌ Error en onAuthStateChange:', error);
+        
+        // Si es error de refresh token, limpiar sesión
+        if (error?.message?.includes('Refresh Token') || 
+            error?.message?.includes('Invalid Refresh Token') ||
+            error?.message?.includes('refresh_token_not_found')) {
+          await get().clearInvalidSession();
+        }
       }
     });
   },

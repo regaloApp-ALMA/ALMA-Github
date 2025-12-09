@@ -5,27 +5,116 @@ import { useTreeStore } from '@/stores/treeStore';
 import colors from '@/constants/colors';
 import { Plus, Share2, Lock, Trash2, Unlock } from 'lucide-react-native';
 import { useThemeStore } from '@/stores/themeStore';
+import { useUserStore } from '@/stores/userStore';
 import { supabase } from '@/lib/supabase';
 
 export default function BranchDetailsScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { tree, fetchMyTree } = useTreeStore();
+  const { tree, sharedTree, viewingTree, fetchMyTree, fetchSharedTree } = useTreeStore();
   const { theme } = useThemeStore();
+  const { user } = useUserStore();
   const router = useRouter();
   const isDarkMode = theme === 'dark';
   const [isUpdating, setIsUpdating] = useState(false);
+  const [isLoadingBranch, setIsLoadingBranch] = useState(false);
   const { deleteBranch } = useTreeStore();
 
+  // Determinar qué árbol usar (propio o compartido)
+  const activeTree = viewingTree || sharedTree || tree;
+  const isSharedTree = !!(viewingTree || sharedTree);
+  const isOwner = activeTree?.ownerId === user?.id;
+
+  // Estados locales para cuando no hay árbol en el store
+  const [branchData, setBranchData] = useState<any>(null);
+  const [fruitsData, setFruitsData] = useState<any[]>([]);
+
   useEffect(() => {
-    if (!tree) fetchMyTree();
-  }, [tree]);
+    if (!activeTree) {
+      // Si no hay árbol en el store, cargar el propio
+      fetchMyTree();
+    }
+  }, [activeTree]);
 
-  if (!tree) return <View style={[styles.center, isDarkMode && styles.bgDark]}><ActivityIndicator /></View>;
+  // Si no hay árbol en el store, cargar rama y frutos directamente desde Supabase
+  useEffect(() => {
+    if (!activeTree && id && user) {
+      setIsLoadingBranch(true);
+      async function loadBranchData() {
+        try {
+          // 1. Cargar la rama con información del árbol
+          const { data: branch, error: branchError } = await supabase
+            .from('branches')
+            .select('*, tree:trees!inner(owner_id, id)')
+            .eq('id', id)
+            .single();
 
-  const branch = tree.branches.find(b => b.id === id);
-  const branchFruits = tree.fruits.filter(f => f.branchId === id);
+          if (branchError) throw branchError;
 
-  if (!branch) return <View style={[styles.center, isDarkMode && styles.bgDark]}><Text>Rama no encontrada</Text></View>;
+          if (branch) {
+            setBranchData(branch);
+            const isOwnerBranch = branch.tree?.owner_id === user.id;
+
+            // 2. Cargar frutos según permisos
+            let fruitsQuery = supabase
+              .from('fruits')
+              .select('*')
+              .eq('branch_id', id);
+
+            // Si NO es el dueño, solo frutos compartidos
+            if (!isOwnerBranch) {
+              fruitsQuery = fruitsQuery.eq('is_shared', true);
+            }
+
+            const { data: fruits, error: fruitsError } = await fruitsQuery
+              .order('created_at', { ascending: false });
+
+            if (fruitsError) throw fruitsError;
+            setFruitsData(fruits || []);
+          }
+        } catch (error) {
+          console.error('Error cargando rama:', error);
+          Alert.alert('Error', 'No se pudo cargar la información de la rama.');
+        } finally {
+          setIsLoadingBranch(false);
+        }
+      }
+      loadBranchData();
+    }
+  }, [activeTree, id, user]);
+
+  // Determinar qué datos usar
+  const branch = activeTree?.branches.find(b => b.id === id) || branchData;
+  const branchFruits = activeTree 
+    ? activeTree.fruits.filter(f => {
+        if (f.branchId === id) {
+          return isOwner || f.isShared;
+        }
+        return false;
+      })
+    : fruitsData.map((f: any) => ({
+        id: f.id,
+        title: f.title,
+        description: f.description || '',
+        branchId: f.branch_id,
+        mediaUrls: f.media_urls || [],
+        createdAt: f.created_at,
+        isShared: f.is_shared || false,
+        position: f.position || { x: 0, y: 0 },
+      }));
+
+  const finalIsOwner = activeTree ? isOwner : (branchData?.tree?.owner_id === user?.id);
+
+  if ((!activeTree && isLoadingBranch) || (!branch && !isLoadingBranch)) {
+    return <View style={[styles.center, isDarkMode && styles.bgDark]}><ActivityIndicator /></View>;
+  }
+
+  if (!branch) {
+    return <View style={[styles.center, isDarkMode && styles.bgDark]}><Text style={isDarkMode && styles.textWhite}>Rama no encontrada</Text></View>;
+  }
+
+  if (!branch) {
+    return <View style={[styles.center, isDarkMode && styles.bgDark]}><Text style={isDarkMode && styles.textWhite}>Rama no encontrada</Text></View>;
+  }
 
   // --- LÓGICA DE ELIMINAR ---
   const handleDeleteBranch = () => {
@@ -57,8 +146,11 @@ export default function BranchDetailsScreen() {
 
   // --- LÓGICA DE PRIVACIDAD ---
   const togglePrivacy = async () => {
+    if (!finalIsOwner) return; // Solo el dueño puede cambiar privacidad
+    
     setIsUpdating(true);
-    const newValue = !branch.isShared;
+    const currentValue = branch.isShared || branch.is_shared || false;
+    const newValue = !currentValue;
     try {
       const { error } = await supabase
         .from('branches')
@@ -66,6 +158,12 @@ export default function BranchDetailsScreen() {
         .eq('id', id);
 
       if (error) throw error;
+      
+      // Actualizar estado local
+      if (branchData) {
+        setBranchData({ ...branchData, is_shared: newValue });
+      }
+      
       await fetchMyTree(); // Recargar para ver el cambio
     } catch (e: any) {
       Alert.alert("Error", e.message);
@@ -81,11 +179,11 @@ export default function BranchDetailsScreen() {
           title: branch.name,
           headerStyle: { backgroundColor: branch.color || colors.primary },
           headerTintColor: colors.white,
-          headerRight: () => (
+          headerRight: () => finalIsOwner ? (
             <TouchableOpacity onPress={handleDeleteBranch} style={{ marginRight: 10 }}>
               <Trash2 size={20} color="white" />
             </TouchableOpacity>
-          )
+          ) : null
         }}
       />
 
@@ -93,35 +191,43 @@ export default function BranchDetailsScreen() {
         <View style={[styles.header, { backgroundColor: branch.color || colors.primary }]}>
           <View style={styles.headerContent}>
             <Text style={styles.branchInfo}>
-              {branchFruits.length} recuerdos • Creada el {new Date(branch.createdAt).toLocaleDateString()}
+              {branchFruits.length} recuerdos • Creada el {new Date(branch.createdAt || branch.created_at).toLocaleDateString()}
             </Text>
 
-            <View style={styles.controlsRow}>
-              <TouchableOpacity style={styles.privacyButton} onPress={togglePrivacy} disabled={isUpdating}>
-                {branch.isShared ? <Unlock size={16} color="white" /> : <Lock size={16} color="white" />}
-                <Text style={styles.actionText}>
-                  {branch.isShared ? 'Pública' : 'Privada'}
-                </Text>
-                {isUpdating && <ActivityIndicator size="small" color="white" style={{ marginLeft: 5 }} />}
-              </TouchableOpacity>
-            </View>
+            {finalIsOwner && (
+              <View style={styles.controlsRow}>
+                <TouchableOpacity style={styles.privacyButton} onPress={togglePrivacy} disabled={isUpdating}>
+                  {(branch.isShared || branch.is_shared) ? <Unlock size={16} color="white" /> : <Lock size={16} color="white" />}
+                  <Text style={styles.actionText}>
+                    {(branch.isShared || branch.is_shared) ? 'Pública' : 'Privada'}
+                  </Text>
+                  {isUpdating && <ActivityIndicator size="small" color="white" style={{ marginLeft: 5 }} />}
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
         </View>
 
         <ScrollView style={styles.content}>
           {branchFruits.length === 0 ? (
             <View style={styles.emptyState}>
-              <Text style={[styles.emptyStateTitle, isDarkMode && styles.textWhite]}>Rama vacía</Text>
-              <Text style={[styles.emptyStateText, isDarkMode && styles.textLight]}>
-                Añade tu primer recuerdo para ver crecer esta rama.
+              <Text style={[styles.emptyStateTitle, isDarkMode && styles.textWhite]}>
+                {finalIsOwner ? 'Rama vacía' : 'Sin recuerdos compartidos'}
               </Text>
-              <TouchableOpacity
-                style={[styles.addButton, { backgroundColor: branch.color || colors.primary }]}
-                onPress={() => router.push(`/add-memory-options?branchId=${id}`)}
-              >
-                <Plus size={20} color={colors.white} />
-                <Text style={styles.addButtonText}>Añadir recuerdo</Text>
-              </TouchableOpacity>
+              <Text style={[styles.emptyStateText, isDarkMode && styles.textLight]}>
+                {finalIsOwner 
+                  ? 'Añade tu primer recuerdo para ver crecer esta rama.'
+                  : 'Esta rama aún no tiene recuerdos compartidos.'}
+              </Text>
+              {finalIsOwner && (
+                <TouchableOpacity
+                  style={[styles.addButton, { backgroundColor: branch.color || colors.primary }]}
+                  onPress={() => router.push(`/add-memory-options?branchId=${id}`)}
+                >
+                  <Plus size={20} color={colors.white} />
+                  <Text style={styles.addButtonText}>Añadir recuerdo</Text>
+                </TouchableOpacity>
+              )}
             </View>
           ) : (
             <View style={styles.fruitsContainer}>

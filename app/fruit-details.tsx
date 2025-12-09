@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ActivityIndicator, Alert, TextInput, Modal, Dimensions, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ActivityIndicator, Alert, TextInput, Modal, Dimensions, Platform, KeyboardAvoidingView } from 'react-native';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { useTreeStore } from '@/stores/treeStore';
 import { useGiftStore } from '@/stores/giftStore';
@@ -233,14 +233,23 @@ export default function FruitDetailsScreen() {
         </View>
       </ScrollView>
 
-      {/* Modal de Compartir */}
+      {/* Modal de Compartir con KeyboardAvoidingView */}
       <Modal
         visible={showShareModal}
         transparent
         animationType="slide"
         onRequestClose={() => setShowShareModal(false)}
       >
-        <View style={styles.modalOverlay}>
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? 100 : 0}
+        >
+          <TouchableOpacity
+            style={StyleSheet.absoluteFill}
+            activeOpacity={1}
+            onPress={() => setShowShareModal(false)}
+          />
           <View style={[styles.modalContent, isDarkMode && styles.modalContentDark]}>
             <Text style={[styles.modalTitle, isDarkMode && styles.textWhite]}>
               Compartir Recuerdo
@@ -249,19 +258,26 @@ export default function FruitDetailsScreen() {
               Envía este recuerdo a un amigo o familiar. Cuando lo acepte, aparecerá en su árbol.
             </Text>
 
-            <View style={styles.modalInputContainer}>
-              <Text style={[styles.modalLabel, isDarkMode && styles.textWhite]}>Email del destinatario</Text>
-              <TextInput
-                style={[styles.modalInput, isDarkMode && styles.modalInputDark]}
-                value={recipientEmail}
-                onChangeText={setRecipientEmail}
-                placeholder="ejemplo@email.com"
-                placeholderTextColor={isDarkMode ? '#666' : colors.gray}
-                keyboardType="email-address"
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+              style={{ flex: 1 }}
+            >
+              <View style={styles.modalInputContainer}>
+                <Text style={[styles.modalLabel, isDarkMode && styles.textWhite]}>Email del destinatario</Text>
+                <TextInput
+                  style={[styles.modalInput, isDarkMode && styles.modalInputDark]}
+                  value={recipientEmail}
+                  onChangeText={setRecipientEmail}
+                  placeholder="ejemplo@email.com"
+                  placeholderTextColor={isDarkMode ? '#666' : colors.gray}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  returnKeyType="done"
+                />
+              </View>
+            </ScrollView>
 
             <View style={styles.modalActions}>
               <TouchableOpacity
@@ -289,7 +305,7 @@ export default function FruitDetailsScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* Modal de Galería de Álbum */}

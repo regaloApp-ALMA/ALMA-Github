@@ -41,6 +41,7 @@ export type RootType = {
   relation: string;
   treeId?: string;
   createdAt: string;
+  status?: 'active' | 'pending_deletion'; // Estado de la conexión familiar
 };
 
 export type TreeType = {

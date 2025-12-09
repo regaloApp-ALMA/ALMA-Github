@@ -4,7 +4,7 @@ import { useUserStore } from '@/stores/userStore';
 import { useTreeStore } from '@/stores/treeStore';
 import colors from '@/constants/colors';
 import { ChevronRight, Share2, FileText, MessageSquare, HelpCircle, Settings, Bell, Lock, Database, LogOut, Moon, Sun } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useThemeStore } from '@/stores/themeStore';
 
 export default function ProfileScreen() {
@@ -19,15 +19,11 @@ export default function ProfileScreen() {
   }, []);
 
   // 🔄 ACTUALIZAR CONTADORES: Re-cargar cuando el componente se enfoque (usuario vuelve a la pantalla)
-  useEffect(() => {
-    const unsubscribe = router.addListener?.('focus', () => {
+  useFocusEffect(
+    React.useCallback(() => {
       fetchMyTree(true); // Refresh cuando se enfoca la pantalla
-    });
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, []);
+    }, [])
+  );
 
   const handleLogout = async () => {
     await logout();
@@ -216,6 +212,6 @@ const styles = StyleSheet.create({
   menuItemDark: { borderBottomColor: '#333333' },
   menuItemLeft: { flexDirection: 'row', alignItems: 'center' },
   menuItemText: { fontSize: 16, color: colors.text, marginLeft: 16 },
-  logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFEBEE', marginHorizontal: 16, marginVertical: 30, paddingVertical: 16, borderRadius: 12 },
-  logoutButtonText: { color: colors.error, fontSize: 16, fontWeight: 'bold', marginLeft: 8 },
+  logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.error, marginHorizontal: 16, marginVertical: 30, paddingVertical: 16, borderRadius: 12 },
+  logoutButtonText: { color: colors.white, fontSize: 16, fontWeight: 'bold', marginLeft: 8 },
 });

@@ -6,16 +6,20 @@ import { useTreeStore } from '@/stores/treeStore';
 import { useUserStore } from '@/stores/userStore';
 import colors from '@/constants/colors';
 import { useThemeStore } from '@/stores/themeStore';
-import { Gift, Clock, Send, Heart, Image as ImageIcon, X } from 'lucide-react-native';
+import { Gift, Clock, Send, Heart, Image as ImageIcon, X, Calendar } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadMedia } from '@/lib/storageHelper';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 export default function CreateGiftScreen() {
   const [giftType, setGiftType] = useState<'instant' | 'timeCapsule' | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [recipientEmail, setRecipientEmail] = useState('');
-  const [openDate, setOpenDate] = useState('');
+  const [unlockDate, setUnlockDate] = useState(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [pickerMode, setPickerMode] = useState<'date' | 'time' | 'datetime'>('date');
   const [mediaUrls, setMediaUrls] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -68,15 +72,85 @@ export default function CreateGiftScreen() {
     setMediaUrls(newUrls);
   };
 
+  // Funciones para el selector de fecha y hora
+  const handleDateChange = (event: any, selectedDate?: Date) => {
+    if (Platform.OS === 'android') {
+      setShowDatePicker(false);
+      setShowTimePicker(false);
+      if (event.type === 'set' && selectedDate) {
+        const newDate = new Date(selectedDate);
+        if (pickerMode === 'date') {
+          newDate.setHours(unlockDate.getHours());
+          newDate.setMinutes(unlockDate.getMinutes());
+          setUnlockDate(newDate);
+          setTimeout(() => {
+            setPickerMode('time');
+            setShowTimePicker(true);
+          }, 300);
+        } else if (pickerMode === 'time') {
+          newDate.setFullYear(unlockDate.getFullYear());
+          newDate.setMonth(unlockDate.getMonth());
+          newDate.setDate(unlockDate.getDate());
+          setUnlockDate(newDate);
+        }
+      }
+    } else {
+      const currentDate = selectedDate || unlockDate;
+      setShowDatePicker(false);
+      if (event.type === 'set' && selectedDate) {
+        setUnlockDate(currentDate);
+      }
+    }
+  };
+
+  const showDatepicker = () => {
+    if (Platform.OS === 'ios') {
+      setPickerMode('datetime');
+      setShowDatePicker(true);
+    } else {
+      setPickerMode('date');
+      setShowDatePicker(true);
+    }
+  };
+
+  const showTimepicker = () => {
+    if (Platform.OS === 'ios') {
+      setPickerMode('datetime');
+      setShowDatePicker(true);
+    } else {
+      setPickerMode('time');
+      setShowTimePicker(true);
+    }
+  };
+
+  // Formatear fecha y hora para mostrar
+  const formatDateTime = (date: Date) => {
+    const dateStr = date.toLocaleDateString('es-ES', { 
+      day: 'numeric', 
+      month: 'short', 
+      year: 'numeric' 
+    });
+    const timeStr = date.toLocaleTimeString('es-ES', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      hour12: true 
+    });
+    return { dateStr, timeStr };
+  };
+
   const handleCreateGift = async () => {
     if (!title.trim() || !description.trim() || !recipientEmail.trim()) {
       Alert.alert('Error', 'Por favor completa todos los campos obligatorios');
       return;
     }
 
-    if (giftType === 'timeCapsule' && !openDate) {
-      Alert.alert('Error', 'Por favor selecciona una fecha para abrir la cápsula del tiempo');
-      return;
+    if (giftType === 'timeCapsule') {
+      const minDate = new Date();
+      minDate.setDate(minDate.getDate() + 1);
+      if (unlockDate <= minDate) {
+        Alert.alert('Error', 'La fecha de apertura debe ser al menos mañana');
+        return;
+      }
     }
 
     setIsSaving(true);
@@ -90,7 +164,7 @@ export default function CreateGiftScreen() {
           description: description,
           mediaUrls: mediaUrls
         },
-        unlockDate: giftType === 'timeCapsule' ? openDate : undefined,
+        unlockDate: giftType === 'timeCapsule' ? unlockDate.toISOString() : undefined,
       });
 
       Alert.alert(
@@ -213,18 +287,76 @@ export default function CreateGiftScreen() {
           />
         </View>
 
-        {giftType === 'timeCapsule' && (
-          <View style={styles.formGroup}>
-            <Text style={[styles.label, isDarkMode && styles.labelDark]}>Fecha de apertura</Text>
-            <TextInput
-              style={[styles.input, isDarkMode && styles.inputDark]}
-              value={openDate}
-              onChangeText={setOpenDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={isDarkMode ? '#666' : colors.gray}
-            />
-          </View>
-        )}
+        {giftType === 'timeCapsule' && (() => {
+          const { dateStr, timeStr } = formatDateTime(unlockDate);
+          const minDate = new Date();
+          minDate.setDate(minDate.getDate() + 1);
+          
+          return (
+            <View style={styles.formGroup}>
+              <Text style={[styles.label, isDarkMode && styles.labelDark]}>Fecha y hora de apertura</Text>
+              
+              {Platform.OS === 'android' ? (
+                <View style={styles.dateTimeButtonsContainer}>
+                  <TouchableOpacity
+                    style={[styles.datePickerButton, isDarkMode && styles.datePickerButtonDark]}
+                    onPress={showDatepicker}
+                  >
+                    <Calendar size={20} color={isDarkMode ? colors.white : colors.text} />
+                    <Text style={[styles.dateText, isDarkMode && styles.dateTextDark]}>
+                      📅 Fecha: {dateStr}
+                    </Text>
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity
+                    style={[styles.datePickerButton, isDarkMode && styles.datePickerButtonDark]}
+                    onPress={showTimepicker}
+                  >
+                    <Clock size={20} color={isDarkMode ? colors.white : colors.text} />
+                    <Text style={[styles.dateText, isDarkMode && styles.dateTextDark]}>
+                      ⏰ Hora: {timeStr}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={[styles.datePickerButton, isDarkMode && styles.datePickerButtonDark]}
+                  onPress={showDatepicker}
+                >
+                  <Calendar size={20} color={isDarkMode ? colors.white : colors.text} />
+                  <Text style={[styles.dateText, isDarkMode && styles.dateTextDark]}>
+                    {dateStr} a las {timeStr}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
+              {showDatePicker && (
+                <DateTimePicker
+                  value={unlockDate}
+                  mode={Platform.OS === 'ios' ? 'datetime' : pickerMode}
+                  display="default"
+                  onChange={handleDateChange}
+                  minimumDate={minDate}
+                  themeVariant={isDarkMode ? 'dark' : 'light'}
+                />
+              )}
+
+              {showTimePicker && Platform.OS === 'android' && (
+                <DateTimePicker
+                  value={unlockDate}
+                  mode="time"
+                  display="default"
+                  onChange={handleDateChange}
+                  themeVariant={isDarkMode ? 'dark' : 'light'}
+                />
+              )}
+
+              <Text style={[styles.helperText, isDarkMode && styles.helperTextDark]}>
+                La cápsula se abrirá automáticamente el {dateStr} a las {timeStr}
+              </Text>
+            </View>
+          );
+        })()}
 
         <View style={styles.formGroup}>
           <Text style={[styles.label, isDarkMode && styles.labelDark]}>Adjuntar recuerdos (Fotos/Videos)</Text>
@@ -301,5 +433,12 @@ const styles = StyleSheet.create({
   createButtonText: { color: colors.white, fontSize: 16, fontWeight: 'bold' },
   attachButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary + '15', padding: 10, borderRadius: 10 },
   attachText: { color: colors.primary, fontWeight: 'bold', marginLeft: 6 },
-  removeImageBtn: { position: 'absolute', top: -5, right: -5, backgroundColor: 'red', width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' }
+  removeImageBtn: { position: 'absolute', top: -5, right: -5, backgroundColor: 'red', width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
+  dateTimeButtonsContainer: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
+  datePickerButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 8, padding: 12, borderWidth: 1, borderColor: colors.border, gap: 8 },
+  datePickerButtonDark: { backgroundColor: '#1E1E1E', borderColor: '#333' },
+  dateText: { fontSize: 16, color: colors.text },
+  dateTextDark: { color: colors.white },
+  helperText: { fontSize: 12, color: colors.textLight, marginTop: 8 },
+  helperTextDark: { color: '#AAA' }
 });
