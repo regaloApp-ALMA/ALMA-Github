@@ -276,9 +276,13 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         throw createError;
       }
       treeData = newTree;
-      console.log('✅ Árbol creado en addBranch:', treeData.id);
+      console.log('✅ Árbol creado en addBranch:', treeData?.id);
     } else {
-      console.log(`✅ Árbol encontrado en addBranch: ${treeData.id}`);
+      console.log(`✅ Árbol encontrado en addBranch: ${treeData?.id}`);
+    }
+
+    if (!treeData) {
+      throw new Error('No se pudo obtener o crear el árbol');
     }
 
     const treeId = treeData.id;

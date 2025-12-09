@@ -51,9 +51,6 @@ export default function EditFruitScreen() {
         allowsEditing: false,
         allowsMultipleSelection: true,
         quality: 0.7,
-        ...(ImagePicker.VideoQuality && {
-          videoQuality: ImagePicker.VideoQuality.Medium,
-        }),
       };
 
       const result = await ImagePicker.launchImageLibraryAsync(pickerOptions);

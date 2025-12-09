@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 // CAMBIO CLAVE: Importamos desde 'legacy' para evitar el error de deprecación
-import * as FileSystem from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system';
 import { decode } from 'base64-arraybuffer';
 import * as ImageManipulator from 'expo-image-manipulator';
 
@@ -39,7 +39,7 @@ export const uploadMedia = async (uri: string, userId: string, bucket: string): 
             // Para videos: subir directamente sin compresión adicional
             // El vídeo ya viene comprimido por el sistema operativo gracias a videoQuality y videoExportPreset
             const base64 = await FileSystem.readAsStringAsync(uri, {
-                encoding: FileSystem.EncodingType.Base64,
+                encoding: 'base64' as any,
             });
             const fileData = decode(base64);
             
@@ -85,7 +85,7 @@ export const uploadMedia = async (uri: string, userId: string, bucket: string): 
 
         // Leer el archivo comprimido como Base64 usando la API Legacy
         const base64 = await FileSystem.readAsStringAsync(manipulatedImage.uri, {
-            encoding: FileSystem.EncodingType.Base64,
+            encoding: 'base64' as any,
         });
 
         // Convertir Base64 a ArrayBuffer

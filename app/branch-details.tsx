@@ -52,7 +52,7 @@ export default function BranchDetailsScreen() {
 
           if (branch) {
             setBranchData(branch);
-            const isOwnerBranch = branch.tree?.owner_id === user.id;
+            const isOwnerBranch = branch.tree?.owner_id === user?.id;
 
             // 2. Cargar frutos según permisos
             let fruitsQuery = supabase

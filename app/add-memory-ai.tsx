@@ -153,10 +153,6 @@ NO hagas descripciones como: "Fue un día especial con mi familia." Eso es demas
         allowsEditing: true,
         allowsMultipleSelection: true, // Permitir múltiples selecciones
         quality: 0.6,
-        // COMPRESIÓN DE VÍDEO NATIVA (solo videoQuality, sin videoExportPreset)
-        ...(ImagePicker.VideoQuality && {
-          videoQuality: ImagePicker.VideoQuality.Medium,
-        }),
       };
       
       const result = await ImagePicker.launchImageLibraryAsync(pickerOptions);

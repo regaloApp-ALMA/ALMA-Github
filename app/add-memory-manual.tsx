@@ -39,10 +39,6 @@ export default function AddMemoryManualScreen() {
         allowsEditing: false,
         allowsMultipleSelection: true,
         quality: 0.7,
-        // COMPRESIÓN DE VÍDEO NATIVA (solo videoQuality, sin videoExportPreset)
-        ...(ImagePicker.VideoQuality && {
-          videoQuality: ImagePicker.VideoQuality.Medium,
-        }),
       };
 
       const result = await ImagePicker.launchImageLibraryAsync(pickerOptions);

@@ -45,7 +45,6 @@ export default function AddFruitScreen() {
         branchId: selectedBranchId,
         mediaUrls: mediaUrl ? [mediaUrl] : undefined,
         tags: tags.split(',').map(tag => tag.trim()).filter(tag => tag),
-        location: location ? { name: location } : undefined,
         people: people.split(',').map(person => person.trim()).filter(person => person),
         emotions: emotions.split(',').map(emotion => emotion.trim()).filter(emotion => emotion),
         isShared: false,

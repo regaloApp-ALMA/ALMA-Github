@@ -95,7 +95,6 @@ export default function FruitDetailsScreen() {
           description: fruit.description,
           mediaUrls: fruit.mediaUrls || [],
           branchId: fruit.branchId,
-          location: fruit.location,
           position: fruit.position
         }
       });
@@ -224,12 +223,6 @@ export default function FruitDetailsScreen() {
 
           <Text style={[styles.description, isDarkMode && styles.textLight]}>{fruit.description}</Text>
 
-          {fruit.location && (
-            <View style={styles.infoItem}>
-              <MapPin size={18} color={colors.textLight} />
-              <Text style={[styles.infoText, isDarkMode && styles.textLight]}>{fruit.location.name}</Text>
-            </View>
-          )}
         </View>
       </ScrollView>
 
