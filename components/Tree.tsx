@@ -1,4 +1,4 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo, useMemo, useEffect } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity, Dimensions, ScrollView, ActivityIndicator, Share } from 'react-native';
 import { ReactNativeZoomableView } from '@openspacelabs/react-native-zoomable-view';
 import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
@@ -10,13 +10,13 @@ import { Sprout } from 'lucide-react-native';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// --- CONFIGURACIÓN DEL LIENZO (Tu diseño exacto) ---
+// --- CONFIGURACIÓN DEL LIENZO (Diseño mejorado y orgánico) ---
 const CANVAS_WIDTH = 1200;
 const CANVAS_HEIGHT = 1800;
 const CENTER_X = CANVAS_WIDTH / 2;
 const BASE_Y = CANVAS_HEIGHT - 200; // Base del tronco
 
-// Paleta de colores del diseño
+// Paleta de colores simple
 const DESIGN_THEME = {
     bg: '#F3F0E9',        // Beige suave
     trunk: '#795548',     // Marrón madera
@@ -64,59 +64,127 @@ const RootCard = memo(({ root, onPress }: { root: RootType; onPress: (r: RootTyp
 // --- COMPONENTE PRINCIPAL ---
 
 export default function Tree() {
-    const { tree, isLoading } = useTreeStore();
+    const { tree, isLoading, fetchMyTree } = useTreeStore();
     const router = useRouter();
 
+    // 🔄 CARGAR ÁRBOL AL MONTAR: SIEMPRE cargar al montar el componente
+    useEffect(() => {
+        console.log('🌳 Tree: Montado, cargando árbol...');
+        fetchMyTree();
+    }, []);
+
+    // 🔄 ACTUALIZAR CUANDO SE VUELVE A LA PANTALLA: Recargar árbol al enfocar
+    useEffect(() => {
+        const unsubscribe = router.addListener?.('focus', () => {
+            console.log('🌳 Tree: Pantalla enfocada, recargando árbol...');
+            fetchMyTree(true); // Refresh cuando se vuelve a la pantalla
+        });
+
+        return () => {
+            if (unsubscribe) unsubscribe();
+        };
+    }, []);
+
+    // 🔍 DEBUG: Log del estado del árbol
+    useEffect(() => {
+        if (tree) {
+            console.log(`🌳 Tree DEBUG - Ramas: ${tree.branches?.length || 0}, Frutos: ${tree.fruits?.length || 0}`);
+            if (tree.branches && tree.branches.length > 0) {
+                console.log('🌳 Ramas encontradas:', tree.branches.map(b => ({ 
+                    name: b.name, 
+                    position: b.position,
+                    id: b.id 
+                })));
+            }
+        } else {
+            console.log('🌳 Tree DEBUG - No hay árbol cargado');
+        }
+    }, [tree]);
+
     // Cálculos geométricos (Optimizados con useMemo)
+    // 🔄 DEPENDENCIA: Se recalcula cuando cambia tree, branches o fruits
     const { layoutBranches, trunkPath } = useMemo(() => {
-        if (!tree) return { layoutBranches: [], trunkPath: '' };
+        if (!tree) {
+            console.log('🌳 useMemo: No hay árbol, retornando vacío');
+            return { layoutBranches: [], trunkPath: '' };
+        }
 
         const branches = tree.branches || [];
+        console.log(`🌳 Tree renderizando: ${branches.length} ramas, ${tree.fruits?.length || 0} frutos`);
 
-        // 1. DIBUJO DEL TRONCO
-        const trunkWidth = 35;
-        const trunkHeight = 900; // Tronco alto como en tu imagen
+        // 1. DIBUJO DEL TRONCO (Simple y funcional)
+        const trunkWidth = 40;
+        const trunkHeight = 1000;
         const trunkTopY = BASE_Y - trunkHeight;
+        const trunkStartY = trunkTopY + 150; // Punto donde empiezan a salir las ramas
 
+        // Tronco simple y elegante
         const trunkPath = `
             M ${CENTER_X - trunkWidth / 2} ${BASE_Y}
             L ${CENTER_X - trunkWidth / 2} ${trunkTopY}
-            Q ${CENTER_X} ${trunkTopY - 20} ${CENTER_X + trunkWidth / 2} ${trunkTopY}
+            Q ${CENTER_X} ${trunkTopY - 10} ${CENTER_X + trunkWidth / 2} ${trunkTopY}
             L ${CENTER_X + trunkWidth / 2} ${BASE_Y}
             Z
         `;
 
-        // 2. DIBUJO DE RAMAS
+        // 2. DIBUJO DE RAMAS (Diseño simple y funcional como la imagen)
+        
         const layoutBranches = branches.map((branch, i) => {
-            const isLeft = i % 2 === 0;
-            const sideMultiplier = isLeft ? -1 : 1;
+            // Parsear position si es string
+            let branchPosition = branch.position || { x: 0, y: 0 };
+            if (typeof branchPosition === 'string') {
+                try {
+                    branchPosition = JSON.parse(branchPosition);
+                } catch (e) {
+                    branchPosition = { x: 0, y: 0 };
+                }
+            }
 
-            // Distribución vertical
-            const verticalSpacing = 140;
-            const startY = BASE_Y - 250 - (i * verticalSpacing);
+            // Diseño simple: ramas horizontales alternando lados
+            const hasCustomPosition = branchPosition && 
+                                     (branchPosition.x !== 0 || branchPosition.y !== 0);
+            
+            let endX: number, endY: number;
+            let startX: number, startY: number;
+            let isLeft: boolean;
+            
+            if (hasCustomPosition) {
+                // Usar posición guardada en BD
+                endX = CENTER_X + branchPosition.x;
+                endY = BASE_Y - 200 + branchPosition.y;
+                startX = CENTER_X;
+                startY = trunkStartY + (branchPosition.y * 0.3);
+                isLeft = branchPosition.x < 0;
+            } else {
+                // Distribución simple: alternar lados, espaciado vertical uniforme
+                isLeft = i % 2 === 0;
+                const sideMultiplier = isLeft ? -1 : 1;
+                const branchLength = 220; // Longitud fija
+                const verticalSpacing = 130; // Espaciado vertical
+                const branchHeight = trunkStartY - (i * verticalSpacing);
+                
+                endX = CENTER_X + (sideMultiplier * branchLength);
+                endY = branchHeight;
+                startX = CENTER_X;
+                startY = branchHeight;
+            }
 
-            // Posición final (Donde va la burbuja)
-            const branchLength = 220;
-            const endX = CENTER_X + (sideMultiplier * branchLength);
-            const endY = startY - 60;
+            // Asegurar visibilidad
+            endX = Math.max(60, Math.min(CANVAS_WIDTH - 60, endX));
+            endY = Math.max(100, Math.min(CANVAS_HEIGHT - 250, endY));
+            startY = Math.max(trunkTopY, Math.min(trunkStartY + 300, startY));
 
-            // Curva Bezier
-            const startX = CENTER_X;
-            const cp1x = CENTER_X + (sideMultiplier * 100); // Curva salida
-            const cp1y = startY;
-            const cp2x = endX - (sideMultiplier * 50);      // Curva llegada
-            const cp2y = endY + 20;
+            // Rama horizontal simple (línea recta)
+            const path = `M ${startX} ${startY} L ${endX} ${endY}`;
 
-            const path = `M ${startX} ${startY} C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${endX} ${endY}`;
-
-            // Contamos los frutos en tiempo real desde el store
+            // Contar frutos
             const fruitCount = tree.fruits.filter(f => f.branchId === branch.id).length;
 
-            return { ...branch, x: endX, y: endY, path, fruitCount };
+            return { ...branch, x: endX, y: endY, path, fruitCount, isLeft };
         });
 
         return { layoutBranches, trunkPath };
-    }, [tree]); // Se recalcula automáticamente si el árbol cambia (ej: al borrar)
+    }, [tree, tree?.branches?.length, tree?.fruits?.length]); // 🔄 DEPENDENCIAS: Se recalcula cuando cambian ramas o frutos
 
     return (
         <View style={styles.container}>
@@ -150,19 +218,19 @@ export default function Tree() {
                         {/* Suelo */}
                         <Path
                             d={`M 0 ${BASE_Y} Q ${CENTER_X} ${BASE_Y - 80} ${CANVAS_WIDTH} ${BASE_Y} V ${CANVAS_HEIGHT} H 0 Z`}
-                            fill="#E8E6DC"
+                            fill={DESIGN_THEME.ground}
                         />
 
-                        {/* Tronco */}
+                        {/* Tronco simple */}
                         <Path d={trunkPath} fill={DESIGN_THEME.trunk} />
 
-                        {/* Líneas de Ramas */}
+                        {/* Ramas horizontales simples */}
                         {layoutBranches.map((b) => (
                             <Path
                                 key={`path-${b.id}`}
                                 d={b.path}
                                 stroke={DESIGN_THEME.trunk}
-                                strokeWidth={12}
+                                strokeWidth={10}
                                 strokeLinecap="round"
                                 fill="none"
                             />
@@ -244,7 +312,10 @@ const styles = StyleSheet.create({
         borderRadius: 45,
         justifyContent: 'center', alignItems: 'center',
         elevation: 5,
-        shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4,
+        shadowColor: '#000', 
+        shadowOffset: { width: 0, height: 2 }, 
+        shadowOpacity: 0.2, 
+        shadowRadius: 4,
     },
     branchText: {
         color: '#FFF', fontWeight: 'bold', fontSize: 14, textAlign: 'center', paddingHorizontal: 5,

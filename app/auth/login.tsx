@@ -77,7 +77,7 @@ export default function LoginScreen() {
             />
             <View style={styles.overlay} />
             <Text style={styles.logoText}>ALMA</Text>
-            <Text style={styles.tagline}>Donde los recuerdos echan raíces</Text>
+            <Text style={styles.tagline}>Donde los recuerdos se convierten en raíces</Text>
           </View>
 
           <View style={styles.formContainer}>

@@ -18,6 +18,17 @@ export default function ProfileScreen() {
     fetchMyTree();
   }, []);
 
+  // 🔄 ACTUALIZAR CONTADORES: Re-cargar cuando el componente se enfoque (usuario vuelve a la pantalla)
+  useEffect(() => {
+    const unsubscribe = router.addListener?.('focus', () => {
+      fetchMyTree(true); // Refresh cuando se enfoca la pantalla
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
+
   const handleLogout = async () => {
     await logout();
     router.replace('/auth/login');
@@ -59,15 +70,21 @@ export default function ProfileScreen() {
 
       <View style={[styles.statsContainer, isDarkMode && styles.statsContainerDark]}>
         <View style={styles.statItem}>
-          <Text style={[styles.statValue, isDarkMode && styles.textWhite]}>{tree?.fruits?.length || 0}</Text>
+          <Text style={[styles.statValue, isDarkMode && styles.textWhite]}>
+            {tree?.fruits?.length || 0}
+          </Text>
           <Text style={[styles.statLabel, isDarkMode && styles.statLabelDark]}>Recuerdos</Text>
         </View>
         <View style={styles.statItem}>
-          <Text style={[styles.statValue, isDarkMode && styles.textWhite]}>{tree?.branches?.length || 0}</Text>
+          <Text style={[styles.statValue, isDarkMode && styles.textWhite]}>
+            {tree?.branches?.length || 0}
+          </Text>
           <Text style={[styles.statLabel, isDarkMode && styles.statLabelDark]}>Ramas</Text>
         </View>
         <View style={styles.statItem}>
-          <Text style={[styles.statValue, isDarkMode && styles.textWhite]}>{tree?.roots?.length || 0}</Text>
+          <Text style={[styles.statValue, isDarkMode && styles.textWhite]}>
+            {tree?.roots?.length || 0}
+          </Text>
           <Text style={[styles.statLabel, isDarkMode && styles.statLabelDark]}>Raíces</Text>
         </View>
       </View>

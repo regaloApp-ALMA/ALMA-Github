@@ -205,6 +205,9 @@ export const useGiftStore = create<GiftState>((set, get) => ({
         }
 
         if (targetBranchId) {
+          // ⚠️ IMPORTANTE: Solo enviar campos que existen en el esquema SQL
+          // El SQL tiene: id, branch_id, title, description, media_urls, date, is_shared, position, created_at
+          // NO tiene: user_id, tree_id, location
           await supabase.from('fruits').insert({
             branch_id: targetBranchId,
             title: gift.contentData?.title || 'Recuerdo regalado',
@@ -212,8 +215,8 @@ export const useGiftStore = create<GiftState>((set, get) => ({
             date: new Date().toISOString(),
             media_urls: gift.contentData?.mediaUrls || [],
             is_shared: true, // Marcar como compartido
-            position: gift.contentData?.position || { x: 0, y: 0 },
-            location: gift.contentData?.location || { name: '' }
+            position: gift.contentData?.position || { x: 0, y: 0 }
+            // ⚠️ NO incluir 'location' porque no existe en el esquema SQL
           });
         }
       }

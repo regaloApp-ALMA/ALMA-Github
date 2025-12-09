@@ -25,7 +25,12 @@ const isVideoFile = (uri: string): boolean => {
   return videoExtensions.some(ext => lowerUri.includes(ext)) || lowerUri.includes('video');
 };
 
-export const uploadMedia = async (uri: string, userId: string, bucket: string = 'avatars'): Promise<string | null> => {
+export const uploadMedia = async (uri: string, userId: string, bucket: string): Promise<string | null> => {
+    // Validar que el bucket esté especificado
+    if (!bucket || (bucket !== 'avatars' && bucket !== 'memories')) {
+        console.error('❌ Error: bucket debe ser "avatars" o "memories". Recibido:', bucket);
+        throw new Error(`Bucket inválido: ${bucket}. Debe ser "avatars" o "memories".`);
+    }
     try {
         // Detectar si es video (los vídeos ya vienen comprimidos del picker nativo)
         const isVideo = isVideoFile(uri);
@@ -120,8 +125,13 @@ export const uploadMedia = async (uri: string, userId: string, bucket: string = 
 export const uploadMultipleMedia = async (
     uris: string[], 
     userId: string, 
-    bucket: string = 'avatars'
+    bucket: string // OBLIGATORIO: debe ser 'avatars' o 'memories'
 ): Promise<string[]> => {
+    // Validar que el bucket esté especificado
+    if (!bucket || (bucket !== 'avatars' && bucket !== 'memories')) {
+        console.error('❌ Error: bucket debe ser "avatars" o "memories". Recibido:', bucket);
+        throw new Error(`Bucket inválido: ${bucket}. Debe ser "avatars" o "memories".`);
+    }
     const uploadPromises = uris.map(uri => uploadMedia(uri, userId, bucket));
     const results = await Promise.all(uploadPromises);
     return results.filter(url => url !== null) as string[];

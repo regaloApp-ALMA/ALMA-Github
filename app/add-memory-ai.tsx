@@ -14,6 +14,7 @@ export default function AddMemoryAIScreen() {
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [generatedMemory, setGeneratedMemory] = useState<{ title: string, description: string, category?: string } | null>(null);
   const [mediaUrls, setMediaUrls] = useState<string[]>([]);
   const [selectedBranchId, setSelectedBranchId] = useState<string>('');
@@ -160,19 +161,12 @@ NO hagas descripciones como: "Fue un día especial con mi familia." Eso es demas
       
       const result = await ImagePicker.launchImageLibraryAsync(pickerOptions);
 
-      if (!result.canceled && user?.id && result.assets) {
-        setIsUploading(true);
-        try {
-          // Subir todos los archivos seleccionados
-          const uploadPromises = result.assets.map(asset => 
-            uploadMedia(asset.uri, user.id, 'memories')
-          );
-          const uploadedUrls = await Promise.all(uploadPromises);
-          const validUrls = uploadedUrls.filter(url => url !== null) as string[];
-          setMediaUrls(prev => [...prev, ...validUrls]);
-        } finally {
-          setIsUploading(false);
-        }
+      if (!result.canceled && result.assets) {
+        // 📸 OPTIMIZACIÓN: Solo guardar URIs locales, NO subir todavía
+        // Las URIs locales son del tipo: file:///path/to/image.jpg
+        const localUris = result.assets.map(asset => asset.uri);
+        setMediaUrls(prev => [...prev, ...localUris]);
+        console.log('📸 Media seleccionado (URIs locales guardadas):', localUris.length);
       }
     } catch (error: any) {
       console.error('Error picking image:', error);
@@ -188,21 +182,62 @@ NO hagas descripciones como: "Fue un día especial con mi familia." Eso es demas
       return;
     }
 
+    if (!user?.id) {
+      Alert.alert('Error', 'No se pudo identificar al usuario.');
+      return;
+    }
+
+    setIsSaving(true);
     try {
+      // 📸 OPTIMIZACIÓN: Subir fotos/videos SOLO al guardar
+      let uploadedUrls: string[] = [];
+      
+      if (mediaUrls.length > 0) {
+        setIsUploading(true);
+        try {
+          // Filtrar URIs locales (file://) y subirlas
+          const localUris = mediaUrls.filter(uri => uri.startsWith('file://') || uri.startsWith('content://'));
+          const alreadyUploaded = mediaUrls.filter(uri => !uri.startsWith('file://') && !uri.startsWith('content://'));
+          
+          // Subir solo las que son locales
+          if (localUris.length > 0) {
+            console.log('📤 Subiendo', localUris.length, 'archivos al storage...');
+            const uploadPromises = localUris.map(uri => 
+              uploadMedia(uri, user.id, 'memories')
+            );
+            const uploadResults = await Promise.all(uploadPromises);
+            const validUploaded = uploadResults.filter(url => url !== null) as string[];
+            uploadedUrls = [...alreadyUploaded, ...validUploaded];
+            console.log('✅', validUploaded.length, 'archivos subidos exitosamente');
+          } else {
+            uploadedUrls = alreadyUploaded;
+          }
+        } catch (uploadError: any) {
+          console.error('❌ Error subiendo archivos:', uploadError);
+          Alert.alert('Error', 'No se pudieron subir algunos archivos. ' + (uploadError.message || ''));
+          setIsUploading(false);
+          return;
+        } finally {
+          setIsUploading(false);
+        }
+      }
+
+      // Guardar el recuerdo con las URLs públicas
       await addFruit({
         title: generatedMemory.title,
         description: generatedMemory.description,
         branchId: selectedBranchId,
-        mediaUrls: mediaUrls,
+        mediaUrls: uploadedUrls,
         isShared: false,
-        position: { x: 0, y: 0 },
-        location: { name: '' }
+        position: { x: 0, y: 0 }
       } as any);
 
       Alert.alert("¡Guardado!", "Tu recuerdo ya brilla en tu árbol.");
       router.push('/(tabs)/tree');
     } catch (error: any) {
       Alert.alert("Error", error.message);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -395,9 +430,19 @@ NO hagas descripciones como: "Fue un día especial con mi familia." Eso es demas
                     <RefreshCw size={18} color={colors.textLight} />
                     <Text style={[styles.retryText, isDarkMode && styles.textLight]}>Rehacer</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.confirmButton} onPress={handleSave}>
-                    <Check size={20} color="#FFF" />
-                    <Text style={styles.confirmText}>Guardar en el Árbol</Text>
+                  <TouchableOpacity 
+                    style={[styles.confirmButton, (isUploading || isSaving) && styles.confirmButtonDisabled]} 
+                    onPress={handleSave}
+                    disabled={isUploading || isSaving}
+                  >
+                    {(isUploading || isSaving) ? (
+                      <ActivityIndicator color="#FFF" size="small" />
+                    ) : (
+                      <>
+                        <Check size={20} color="#FFF" />
+                        <Text style={styles.confirmText}>Guardar en el Árbol</Text>
+                      </>
+                    )}
                   </TouchableOpacity>
                 </View>
               </View>
@@ -667,6 +712,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 5
+  },
+  confirmButtonDisabled: {
+    opacity: 0.7
   },
   confirmText: {
     color: '#FFF',

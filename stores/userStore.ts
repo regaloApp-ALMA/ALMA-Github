@@ -34,7 +34,7 @@ export const useUserStore = create<UserState>((set, get) => ({
   isAuthenticated: false,
   error: null,
 
-  // Función auxiliar para crear perfil si no existe (reutilizable)
+  // Función auxiliar para crear perfil si no existe (VERSIÓN ROBUSTA)
   ensureProfile: async (userId: string, email: string, name?: string, avatarUrl?: string) => {
     try {
       // Intentar obtener perfil existente
@@ -44,8 +44,9 @@ export const useUserStore = create<UserState>((set, get) => ({
         .eq('id', userId)
         .single();
 
-      // Si no existe, crearlo
-      if (error && error.code === 'PGRST116') {
+      // Si hay error de permisos (42501), intentar crear el perfil directamente
+      if (error && error.code === '42501') {
+        console.warn('⚠️ Error de permisos al leer perfil, intentando crear...');
         const { data: newProfile, error: insertError } = await supabase
           .from('profiles')
           .insert({
@@ -58,18 +59,70 @@ export const useUserStore = create<UserState>((set, get) => ({
           .single();
 
         if (insertError) {
-          console.error('Error creando perfil:', insertError);
+          console.error('❌ Error creando perfil después de 42501:', insertError);
+          // Si falla la creación, esperar un momento y reintentar la lectura
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          const retryResult = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', userId)
+            .single();
+          if (retryResult.data) {
+            profile = retryResult.data;
+          } else {
+            return null;
+          }
+        } else {
+          profile = newProfile;
+        }
+      }
+      // Si no existe (PGRST116), crearlo
+      else if (error && error.code === 'PGRST116') {
+        const { data: newProfile, error: insertError } = await supabase
+          .from('profiles')
+          .insert({
+            id: userId,
+            email: email,
+            name: name || email?.split('@')[0] || 'Usuario',
+            avatar_url: avatarUrl || null,
+          })
+          .select('*')
+          .single();
+
+        if (insertError) {
+          console.error('❌ Error creando perfil:', insertError);
           return null;
         }
         profile = newProfile;
-      } else if (error) {
-        console.error('Error obteniendo perfil:', error);
+      } 
+      // Otros errores
+      else if (error) {
+        console.error('❌ Error obteniendo perfil:', error);
         return null;
       }
 
-      return profile ? { ...(profile as any), email: email } as UserType : null;
+      // Mapear correctamente desde el SQL a UserType
+      if (profile) {
+        return {
+          id: profile.id,
+          name: profile.name || email?.split('@')[0] || 'Usuario', // ⚠️ Usar 'name', NO 'full_name'
+          email: email,
+          avatar_url: profile.avatar_url || undefined,
+          bio: profile.bio || undefined,
+          phone: profile.phone || undefined,
+          location: profile.location || undefined,
+          birth_date: profile.birth_date || undefined,
+          current_streak: profile.current_streak || 0,
+          // ⚠️ max_streak NO existe en el esquema SQL, se calcula dinámicamente si es necesario
+          max_streak: profile.current_streak || 0, // Usar current_streak como fallback
+          last_interaction_date: profile.last_interaction_date || undefined,
+          createdAt: profile.created_at || new Date().toISOString(),
+          settings: profile.settings || undefined,
+        } as UserType;
+      }
+      return null;
     } catch (error) {
-      console.error('Error en ensureProfile:', error);
+      console.error('❌ Error en ensureProfile:', error);
       return null;
     }
   },
@@ -95,18 +148,27 @@ export const useUserStore = create<UserState>((set, get) => ({
       newStreak = 1;
     }
 
+    // Calcular max_streak localmente (no se guarda en BD porque no existe en el esquema)
+    const currentMaxStreak = (currentUser as any).max_streak || 0;
+    const newMaxStreak = newStreak > currentMaxStreak ? newStreak : currentMaxStreak;
+
     set(state => ({
       user: state.user ? {
         ...state.user,
         current_streak: newStreak,
+        max_streak: newMaxStreak, // Solo en memoria, no en BD
         last_interaction_date: today
       } as any : null
     }));
 
     try {
+      // ⚠️ IMPORTANTE: Solo actualizar campos que existen en el esquema SQL
+      // El esquema tiene: current_streak, last_interaction_date
+      // NO tiene: max_streak
       await supabase.from('profiles').update({
         current_streak: newStreak,
         last_interaction_date: today
+        // ⚠️ NO incluir max_streak porque no existe en el esquema SQL
       }).eq('id', currentUser.id);
     } catch (error) {
       console.error("Error guardando racha:", error);
@@ -209,7 +271,6 @@ export const useUserStore = create<UserState>((set, get) => ({
 
         return { session: profile ? data.session : null };
       } else {
-        // Si no hay sesión (aunque no debería pasar con confirmación desactivada), solo esperamos
         set({ isLoading: false });
         return { session: null };
       }

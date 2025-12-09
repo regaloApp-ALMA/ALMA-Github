@@ -20,7 +20,7 @@ export default function AddMemoryManualScreen() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [selectedBranch, setSelectedBranch] = useState(branchId || '');
-  const [mediaUrls, setMediaUrls] = useState<string[]>([]);
+  const [mediaUrls, setMediaUrls] = useState<string[]>([]); // Ahora guarda URIs locales (file://...)
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -47,21 +47,12 @@ export default function AddMemoryManualScreen() {
 
       const result = await ImagePicker.launchImageLibraryAsync(pickerOptions);
 
-      if (!result.canceled && user?.id && result.assets) {
-        setIsUploading(true);
-        try {
-          // Subir todos los archivos seleccionados
-          const uploadPromises = result.assets.map(asset => 
-            uploadMedia(asset.uri, user.id, 'memories')
-          );
-          const uploadedUrls = await Promise.all(uploadPromises);
-          const validUrls = uploadedUrls.filter(url => url !== null) as string[];
-          setMediaUrls(prev => [...prev, ...validUrls]);
-        } catch (error) {
-          Alert.alert('Error', 'No se pudieron subir algunos archivos');
-        } finally {
-          setIsUploading(false);
-        }
+      if (!result.canceled && result.assets) {
+        // 📸 OPTIMIZACIÓN: Solo guardar URIs locales, NO subir todavía
+        // Las URIs locales son del tipo: file:///path/to/image.jpg
+        const localUris = result.assets.map(asset => asset.uri);
+        setMediaUrls(prev => [...prev, ...localUris]);
+        console.log('📸 Media seleccionado (URIs locales guardadas):', localUris.length);
       }
     } catch (error: any) {
       console.error('Error picking media:', error);
@@ -83,15 +74,54 @@ export default function AddMemoryManualScreen() {
       return;
     }
 
+    if (!user?.id) {
+      Alert.alert('Error', 'No se pudo identificar al usuario.');
+      return;
+    }
+
     setIsSaving(true);
     try {
+      // 📸 OPTIMIZACIÓN: Subir fotos/videos SOLO al guardar
+      let uploadedUrls: string[] = [];
+      
+      if (mediaUrls.length > 0) {
+        setIsUploading(true);
+        try {
+          // Filtrar URIs locales (file://) y subirlas
+          const localUris = mediaUrls.filter(uri => uri.startsWith('file://') || uri.startsWith('content://'));
+          const alreadyUploaded = mediaUrls.filter(uri => !uri.startsWith('file://') && !uri.startsWith('content://'));
+          
+          // Subir solo las que son locales
+          if (localUris.length > 0) {
+            console.log('📤 Subiendo', localUris.length, 'archivos al storage...');
+            const uploadPromises = localUris.map(uri => 
+              uploadMedia(uri, user.id, 'memories')
+            );
+            const uploadResults = await Promise.all(uploadPromises);
+            const validUploaded = uploadResults.filter(url => url !== null) as string[];
+            uploadedUrls = [...alreadyUploaded, ...validUploaded];
+            console.log('✅', validUploaded.length, 'archivos subidos exitosamente');
+          } else {
+            uploadedUrls = alreadyUploaded;
+          }
+        } catch (uploadError: any) {
+          console.error('❌ Error subiendo archivos:', uploadError);
+          Alert.alert('Error', 'No se pudieron subir algunos archivos. ' + (uploadError.message || ''));
+          setIsUploading(false);
+          setIsSaving(false);
+          return;
+        } finally {
+          setIsUploading(false);
+        }
+      }
+
+      // Guardar el recuerdo con las URLs públicas
       await addFruit({
         title: title.trim(),
         description: description.trim(),
         branchId: selectedBranch,
-        mediaUrls: mediaUrls,
+        mediaUrls: uploadedUrls,
         isShared: false,
-        location: { name: '' },
         position: { x: 0, y: 0 }
       } as any);
 
