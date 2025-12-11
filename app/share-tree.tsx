@@ -10,7 +10,7 @@ import { supabase } from '@/lib/supabase';
 import * as Clipboard from 'expo-clipboard';
 
 export default function ShareTreeScreen() {
-  const { tree } = useTreeStore();
+  const { tree, shareTree } = useTreeStore();
   const { user } = useUserStore();
   const { theme } = useThemeStore();
   const isDarkMode = theme === 'dark';
@@ -63,32 +63,13 @@ export default function ShareTreeScreen() {
 
     setLoading(true);
     try {
-      // 1. Buscar si el usuario destino existe en ALMA
-      const { data: recipientUser } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('email', email.toLowerCase().trim())
-        .single();
-
-      // 2. Dar permiso de ver mi árbol (según lo que elija el usuario)
-      await supabase.from('tree_permissions').insert({
-        tree_id: tree.id,
-        recipient_email: email.toLowerCase().trim(),
-        recipient_id: recipientUser?.id || null,
+      // Usar la función del store que incluye validación de duplicados
+      await shareTree({
+        recipientEmail: email,
+        treeId: tree.id,
         scope: shareAll ? 'all' : 'custom',
-        allowed_branch_ids: shareAll ? null : selectedBranchIds,
-        access_level: 'view',
-        granter_id: user?.id || null,
+        allowedBranchIds: shareAll ? null : selectedBranchIds,
       });
-
-      // 3. CREAR CONEXIÓN FAMILIAR: si ya tiene cuenta, lo añadimos como raíz en MI árbol
-      if (recipientUser) {
-        await supabase.from('family_connections').insert({
-          user_id: user?.id,          // En MI árbol
-          relative_id: recipientUser.id, // Ellos son la raíz
-          relation: 'Familiar'
-        });
-      }
 
       Alert.alert('Invitación enviada', `Has invitado a ${email} a compartir su historia contigo.`);
       setEmail('');
@@ -96,7 +77,13 @@ export default function ShareTreeScreen() {
       setSelectedBranchIds([]);
       setShareAll(true);
     } catch (error: any) {
-      Alert.alert('Error', 'No se pudo compartir. ' + error.message);
+      // Manejar errores específicos de duplicados
+      const errorMessage = error.message || 'No se pudo compartir.';
+      if (errorMessage.includes('Ya has compartido') || errorMessage.includes('ya es parte de tu familia')) {
+        Alert.alert('Ya compartido', errorMessage);
+      } else {
+        Alert.alert('Error', 'No se pudo compartir. ' + errorMessage);
+      }
     } finally {
       setLoading(false);
     }

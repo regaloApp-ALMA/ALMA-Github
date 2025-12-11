@@ -44,6 +44,12 @@ interface TreeState {
   requestRemoveRoot: (rootId: string) => Promise<void>;
   fetchDeletionRequests: () => Promise<void>;
   confirmRemoveRoot: (connectionId: string) => Promise<void>;
+  shareTree: (params: {
+    recipientEmail: string;
+    treeId: string;
+    scope: 'all' | 'custom';
+    allowedBranchIds?: string[] | null;
+  }) => Promise<void>;
 
   // CORRECCIÓN AQUÍ: Actualizamos la definición para aceptar 'position'
   addBranch: (branch: {
@@ -712,14 +718,25 @@ export const useTreeStore = create<TreeState>((set, get) => ({
     if (!userId) throw new Error('Usuario no autenticado');
 
     try {
-      // 1. Crear conexión familiar (añadir como raíz)
-      const { error: connectionError } = await supabase
+      // 1. Obtener información del invitador antes de crear la conexión
+      const { data: granterProfile } = await supabase
+        .from('profiles')
+        .select('name')
+        .eq('id', granterId)
+        .single();
+
+      // 2. Crear conexión familiar (añadir como raíz)
+      let connectionData: { id: string; relative_id: string } | null = null;
+      
+      const { data: newConnection, error: connectionError } = await supabase
         .from('family_connections')
         .insert({
           user_id: userId,
           relative_id: granterId,
           relation: 'Familiar',
-        });
+        })
+        .select()
+        .single();
 
       if (connectionError) {
         // Si ya existe la conexión, no es un error crítico
@@ -728,11 +745,66 @@ export const useTreeStore = create<TreeState>((set, get) => ({
           throw connectionError;
         }
         console.log('ℹ️ La conexión familiar ya existía');
+        
+        // Si ya existe, obtener la conexión existente
+        const { data: existingConnection } = await supabase
+          .from('family_connections')
+          .select('id, relative_id')
+          .eq('user_id', userId)
+          .eq('relative_id', granterId)
+          .single();
+        
+        if (existingConnection) {
+          connectionData = existingConnection;
+        }
+      } else if (newConnection) {
+        connectionData = newConnection;
       }
 
-      // 2. Recargar árbol y limpiar invitaciones
-      await get().fetchMyTree(true);
-      await get().fetchPendingInvitations();
+      // 3. 📬 ACTUALIZACIÓN INMEDIATA DEL ESTADO LOCAL
+      // Eliminar la invitación del array local de inmediato
+      const currentState = get();
+      const updatedInvitations = currentState.pendingInvitations.filter(
+        inv => inv.id !== invitationId
+      );
+
+      // Añadir el nuevo familiar al array roots si tenemos la información
+      let updatedRoots = currentState.tree?.roots || [];
+      if (connectionData && granterProfile) {
+        const newRoot: RootType = {
+          id: connectionData.id,
+          name: granterProfile.name || 'Familiar',
+          relation: 'Familiar',
+          createdAt: new Date().toISOString(),
+          treeId: currentState.tree?.id || '',
+          status: 'active'
+        };
+        
+        // Verificar que no exista ya en roots para evitar duplicados
+        const rootExists = updatedRoots.some(root => root.id === connectionData.id);
+        if (!rootExists) {
+          updatedRoots = [...updatedRoots, newRoot];
+        }
+      }
+
+      // Actualizar el estado inmediatamente
+      set({
+        pendingInvitations: updatedInvitations,
+        tree: currentState.tree ? {
+          ...currentState.tree,
+          roots: updatedRoots
+        } : null
+      });
+
+      // 4. Recargar árbol para sincronizar con la BD (en background)
+      get().fetchMyTree(true).catch(err => {
+        console.warn('⚠️ Error al recargar árbol después de aceptar invitación:', err);
+      });
+      
+      // 5. Recargar invitaciones para asegurar consistencia
+      get().fetchPendingInvitations().catch(err => {
+        console.warn('⚠️ Error al recargar invitaciones:', err);
+      });
 
       console.log('✅ Invitación aceptada exitosamente');
     } catch (error: any) {
@@ -1100,6 +1172,91 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       await get().fetchMyTree(true);
     } catch (error: any) {
       console.error('❌ Error en confirmRemoveRoot:', error);
+      throw error;
+    }
+  },
+
+  // 📤 FUNCIÓN PARA COMPARTIR ÁRBOL CON VALIDACIÓN DE DUPLICADOS
+  shareTree: async (params) => {
+    const userId = useUserStore.getState().user?.id;
+    if (!userId) throw new Error('Usuario no autenticado');
+
+    const { recipientEmail, treeId, scope, allowedBranchIds } = params;
+    const normalizedEmail = recipientEmail.toLowerCase().trim();
+
+    try {
+      // 🚫 VALIDACIÓN 1: Buscar si el usuario destino existe en ALMA
+      const { data: recipientUser } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', normalizedEmail)
+        .single();
+
+      const recipientId = recipientUser?.id || null;
+
+      // 🚫 VALIDACIÓN 2: Verificar si ya existe un permiso para este email en este árbol
+      const { data: existingPermission } = await supabase
+        .from('tree_permissions')
+        .select('id')
+        .eq('tree_id', treeId)
+        .or(`recipient_email.eq.${normalizedEmail}${recipientId ? `,recipient_id.eq.${recipientId}` : ''}`)
+        .maybeSingle();
+
+      if (existingPermission) {
+        throw new Error('Ya has compartido tu árbol con esta persona.');
+      }
+
+      // 🚫 VALIDACIÓN 3: Si el usuario tiene cuenta, verificar si ya existe una conexión familiar
+      if (recipientId) {
+        const { data: existingConnection } = await supabase
+          .from('family_connections')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('relative_id', recipientId)
+          .maybeSingle();
+
+        if (existingConnection) {
+          throw new Error('Ya has compartido tu árbol con esta persona o ya es parte de tu familia.');
+        }
+      }
+
+      // ✅ Si pasa todas las validaciones, crear el permiso
+      const { error: permissionError } = await supabase
+        .from('tree_permissions')
+        .insert({
+          tree_id: treeId,
+          recipient_email: normalizedEmail,
+          recipient_id: recipientId,
+          scope: scope,
+          allowed_branch_ids: scope === 'custom' ? allowedBranchIds : null,
+          access_level: 'view',
+          granter_id: userId,
+        });
+
+      if (permissionError) {
+        console.error('❌ Error creando permiso:', permissionError);
+        throw permissionError;
+      }
+
+      // ✅ Si el usuario tiene cuenta, crear conexión familiar
+      if (recipientId) {
+        const { error: connectionError } = await supabase
+          .from('family_connections')
+          .insert({
+            user_id: userId,
+            relative_id: recipientId,
+            relation: 'Familiar'
+          });
+
+        // Si la conexión ya existe (edge case), no es un error crítico
+        if (connectionError && !connectionError.message?.includes('duplicate') && !connectionError.message?.includes('unique')) {
+          console.warn('⚠️ Error creando conexión familiar (no crítico):', connectionError);
+        }
+      }
+
+      console.log('✅ Árbol compartido exitosamente con:', normalizedEmail);
+    } catch (error: any) {
+      console.error('❌ Error en shareTree:', error);
       throw error;
     }
   },

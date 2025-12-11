@@ -119,6 +119,51 @@ export const useUserStore = create<UserState>((set, get) => ({
 
       // Mapear correctamente desde el SQL a UserType
       if (profile) {
+        // 🔄 VALIDAR RACHA: Si ha pasado más de 1 día desde la última interacción, la racha debe ser 0
+        const today = new Date();
+        const lastInteractionDate = profile.last_interaction_date;
+        let currentStreak = profile.current_streak || 0;
+        let shouldUpdateStreak = false;
+
+        if (lastInteractionDate) {
+          // Calcular diferencia de días entre hoy y la última interacción
+          const diff = differenceInCalendarDays(today, new Date(lastInteractionDate));
+          
+          // Si la diferencia es mayor a 1 (ayer no interactuó), la racha debe ser 0
+          if (diff > 1) {
+            currentStreak = 0;
+            shouldUpdateStreak = true;
+            console.log(`🔄 Racha caducada: última interacción hace ${diff} días. Resetear a 0.`);
+          }
+        } else if (currentStreak > 0) {
+          // Si no hay fecha de última interacción pero hay racha > 0, resetear
+          currentStreak = 0;
+          shouldUpdateStreak = true;
+          console.log('🔄 Racha caducada: no hay fecha de última interacción. Resetear a 0.');
+        }
+
+        // Opcional: Actualizar la BD en segundo plano si detectamos racha caducada
+        if (shouldUpdateStreak) {
+          // Actualizar en segundo plano sin bloquear la respuesta (usar IIFE async)
+          (async () => {
+            try {
+              const { error } = await supabase
+                .from('profiles')
+                .update({ current_streak: 0 })
+                .eq('id', profile.id);
+              
+              if (error) {
+                console.warn('⚠️ Error actualizando racha caducada en BD:', error);
+              } else {
+                console.log('✅ Racha caducada actualizada en BD');
+              }
+            } catch (error) {
+              console.warn('⚠️ Error actualizando racha caducada en BD:', error);
+              // No lanzar error, es opcional
+            }
+          })();
+        }
+
         return {
           id: profile.id,
           name: profile.name || email?.split('@')[0] || 'Usuario', // ⚠️ Usar 'name', NO 'full_name'
@@ -128,9 +173,11 @@ export const useUserStore = create<UserState>((set, get) => ({
           phone: profile.phone || undefined,
           location: profile.location || undefined,
           birth_date: profile.birth_date || undefined,
-          current_streak: profile.current_streak || 0,
+          current_streak: currentStreak, // Usar el valor validado (0 si caducó)
           // ⚠️ max_streak NO existe en el esquema SQL, se calcula dinámicamente si es necesario
-          max_streak: profile.current_streak || 0, // Usar current_streak como fallback
+          // Mantener el máximo histórico: si la racha no está caducada, usar current_streak como max,
+          // si está caducada (0), mantener el valor anterior de current_streak como max (último máximo conocido)
+          max_streak: shouldUpdateStreak ? (profile.current_streak || 0) : currentStreak,
           last_interaction_date: profile.last_interaction_date || undefined,
           createdAt: profile.created_at || new Date().toISOString(),
           settings: profile.settings || undefined,
@@ -149,25 +196,43 @@ export const useUserStore = create<UserState>((set, get) => ({
 
     const today = new Date().toISOString().split('T')[0];
     const lastDate = (currentUser as any).last_interaction_date;
-    let newStreak = (currentUser as any).current_streak || 0;
+    
+    // 🛡️ Si ya interactuó hoy, no hacer nada
+    if (lastDate === today) {
+      console.log('✅ Ya interactuó hoy, no actualizar racha');
+      return;
+    }
 
-    if (lastDate === today) return;
+    // 🛡️ Calcular nueva racha según la diferencia de días
+    let newStreak = 1; // Por defecto, empezar en 1 (primera acción hoy)
 
     if (lastDate) {
-      const diff = differenceInCalendarDays(new Date(today), new Date(lastDate));
+      const todayDate = new Date(today);
+      const lastDateObj = new Date(lastDate);
+      const diff = differenceInCalendarDays(todayDate, lastDateObj);
+      
       if (diff === 1) {
-        newStreak += 1;
-      } else {
+        // Ayer interactuó: continuar la racha (+1)
+        const currentStreak = (currentUser as any).current_streak || 0;
+        newStreak = currentStreak + 1;
+        console.log(`✅ Racha continua: ${currentStreak} -> ${newStreak} días`);
+      } else if (diff > 1) {
+        // No interactuó ayer (o hace más días): resetear a 1
         newStreak = 1;
+        console.log(`🔄 Racha reseteada: última interacción hace ${diff} días. Nueva racha: 1`);
       }
+      // Si diff === 0 (mismo día), no debería llegar aquí porque ya retornamos arriba
     } else {
+      // Primera interacción: empezar en 1
       newStreak = 1;
+      console.log('🆕 Primera interacción: racha iniciada en 1');
     }
 
     // Calcular max_streak localmente (no se guarda en BD porque no existe en el esquema)
     const currentMaxStreak = (currentUser as any).max_streak || 0;
     const newMaxStreak = newStreak > currentMaxStreak ? newStreak : currentMaxStreak;
 
+    // Actualizar estado local
     set(state => ({
       user: state.user ? {
         ...state.user,
@@ -177,6 +242,7 @@ export const useUserStore = create<UserState>((set, get) => ({
       } as any : null
     }));
 
+    // Guardar en BD
     try {
       // ⚠️ IMPORTANTE: Solo actualizar campos que existen en el esquema SQL
       // El esquema tiene: current_streak, last_interaction_date
@@ -186,8 +252,10 @@ export const useUserStore = create<UserState>((set, get) => ({
         last_interaction_date: today
         // ⚠️ NO incluir max_streak porque no existe en el esquema SQL
       }).eq('id', currentUser.id);
+      
+      console.log(`✅ Racha guardada: ${newStreak} días`);
     } catch (error) {
-      console.error("Error guardando racha:", error);
+      console.error("❌ Error guardando racha:", error);
     }
   },
 
