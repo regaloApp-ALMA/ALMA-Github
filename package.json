@@ -5,7 +5,9 @@
   "scripts": {
     "start": "expo start --tunnel",
     "start-web": "expo start --web --tunnel",
-    "start-web-dev": "DEBUG=expo* expo start --web --tunnel"
+    "start-web-dev": "DEBUG=expo* expo start --web --tunnel",
+    "vercel-build": "expo export"
+
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
