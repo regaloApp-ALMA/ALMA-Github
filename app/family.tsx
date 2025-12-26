@@ -134,8 +134,12 @@ export default function FamilyScreen() {
       setAcceptingInvitation(invitation.id);
       await acceptInvitation(invitation.id, invitation.granter_id);
       Alert.alert('¡Invitación aceptada!', `Ahora puedes ver el árbol de ${invitation.sender.name} en tus raíces familiares.`);
+      // Forzar recarga completa de la lista de familiares
       await fetchFamily(); // Recargar lista de familiares
       await fetchPendingInvitations(); // Recargar invitaciones
+      // Recargar también el árbol para actualizar las raíces
+      const { fetchMyTree } = useTreeStore.getState();
+      await fetchMyTree(true);
     } catch (error: any) {
       Alert.alert('Error', 'No se pudo aceptar la invitación. ' + (error.message || ''));
     } finally {

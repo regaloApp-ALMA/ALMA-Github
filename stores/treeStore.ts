@@ -177,11 +177,13 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       console.log(`📊 Ramas formateadas: ${formattedBranches.length}`, formattedBranches.map(b => ({ name: b.name, position: b.position })));
 
       // 3. Obtener Frutos - 🔧 CORRECCIÓN: Obtener frutos de todas las ramas del árbol
+      // Si soy el dueño, veo todo. Si no, solo veo los públicos (RLS lo maneja)
       const branchIds = formattedBranches.map(b => b.id);
       let formattedFruits: FruitType[] = [];
 
       // Solo obtener frutos si hay ramas (los frutos siempre necesitan una rama)
       if (branchIds.length > 0) {
+        // La política RLS ya filtra automáticamente según is_public y si soy dueño
         const { data: fruits, error: fruitsError } = await supabase
           .from('fruits')
           .select('*')
@@ -201,6 +203,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
           mediaUrls: f.media_urls || [],
           createdAt: f.created_at,
           isShared: f.is_shared || false,
+          isPublic: f.is_public !== undefined ? f.is_public : true, // Default true si no existe
           position: f.position || { x: 0, y: 0 },
           // ⚠️ NOTA: El SQL no tiene campo 'location' en fruits, se omite
         }));
@@ -454,7 +457,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   addFruit: async (fruit) => {
     try {
       // ⚠️ IMPORTANTE: Solo enviar campos que existen en el SQL
-      // El SQL tiene: id, branch_id, title, description, media_urls, date, is_shared, position, created_at
+      // El SQL tiene: id, branch_id, title, description, media_urls, date, is_shared, is_public, position, created_at
       // NO tiene: user_id, tree_id, location
       const insertData: any = {
         branch_id: fruit.branchId,
@@ -462,6 +465,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         description: fruit.description || null,
         media_urls: Array.isArray(fruit.mediaUrls) ? fruit.mediaUrls : (fruit.mediaUrls ? [fruit.mediaUrls] : []),
         is_shared: fruit.isShared || false,
+        is_public: fruit.isPublic !== undefined ? fruit.isPublic : true, // Default true
         date: fruit.date ? new Date(fruit.date).toISOString() : new Date().toISOString(),
         position: fruit.position || { x: 0, y: 0 },
       };
@@ -492,6 +496,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
           mediaUrls: newFruit.media_urls || [],
           createdAt: newFruit.created_at,
           isShared: newFruit.is_shared || false,
+          isPublic: newFruit.is_public !== undefined ? newFruit.is_public : true,
           position: newFruit.position || { x: 0, y: 0 },
         };
         set({
@@ -524,7 +529,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   updateFruit: async (fruitId: string, updates: Partial<Omit<FruitType, 'id' | 'createdAt'>>) => {
     try {
       // ⚠️ IMPORTANTE: Solo actualizar campos que existen en el SQL
-      // El SQL tiene: title, description, media_urls, date, is_shared, position
+      // El SQL tiene: title, description, media_urls, date, is_shared, is_public, position
       // NO tiene: location, user_id, tree_id
       const updateData: any = {};
       
@@ -537,6 +542,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       }
       if (updates.branchId !== undefined) updateData.branch_id = updates.branchId;
       if (updates.isShared !== undefined) updateData.is_shared = updates.isShared;
+      if (updates.isPublic !== undefined) updateData.is_public = updates.isPublic;
       if (updates.position !== undefined) updateData.position = updates.position;
       // ⚠️ NO incluir 'location' porque no existe en el SQL
 
@@ -899,29 +905,39 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         treeData = treesData[0];
       }
 
-      // 2. Obtener permisos para este árbol
-      const { data: permissions, error: permError } = await supabase
+      // 2. Verificar que tengo acceso a este árbol (permiso explícito o conexión familiar)
+      // Primero verificar si tengo permiso explícito
+      const { data: permissions } = await supabase
         .from('tree_permissions')
         .select('scope, allowed_branch_ids')
         .eq('tree_id', treeData.id)
         .eq('recipient_id', userId)
-        .single();
+        .maybeSingle();
 
-      if (permError && permError.code !== 'PGRST116') { // PGRST116 = no rows returned
-        console.error('❌ Error obteniendo permisos:', permError);
-        throw permError;
+      // También verificar si soy familiar (tengo conexión familiar activa)
+      const { data: familyConnection } = await supabase
+        .from('family_connections')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('relative_id', treeData.owner_id)
+        .eq('status', 'active')
+        .maybeSingle();
+
+      // Si no tengo permiso explícito ni conexión familiar, no puedo ver el árbol
+      if (!permissions && !familyConnection) {
+        throw new Error('No tienes permiso para ver este árbol.');
       }
 
       const scope = permissions?.scope || 'all';
       const allowedBranchIds = permissions?.allowed_branch_ids || null;
 
-      // 3. Obtener ramas (filtrar según permisos)
+      // 3. Obtener TODAS las ramas del árbol (en tiempo real, no copias estáticas)
+      // Si el scope es 'custom', solo obtener ramas permitidas
       let branchesQuery = supabase
         .from('branches')
         .select('*')
         .eq('tree_id', treeData.id);
 
-      // Si el scope es 'custom', solo obtener ramas permitidas
       if (scope === 'custom' && allowedBranchIds && allowedBranchIds.length > 0) {
         branchesQuery = branchesQuery.in('id', allowedBranchIds);
       }
@@ -963,12 +979,12 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       let formattedFruits: FruitType[] = [];
 
       if (branchIds.length > 0) {
-        // Filtrar frutos: solo los que están en ramas compartidas Y que están marcados como compartidos
+        // La política RLS filtra automáticamente: solo veo frutos públicos si no soy dueño
+        // No necesitamos filtrar manualmente por is_public aquí, RLS lo hace
         const { data: fruits, error: fruitsError } = await supabase
           .from('fruits')
           .select('*')
           .in('branch_id', branchIds)
-          .eq('is_shared', true) // Solo frutos compartidos
           .order('created_at', { ascending: false });
 
         if (fruitsError) {
@@ -984,6 +1000,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
           mediaUrls: f.media_urls || [],
           createdAt: f.created_at,
           isShared: f.is_shared || false,
+          isPublic: f.is_public !== undefined ? f.is_public : true,
           position: f.position || { x: 0, y: 0 },
         }));
       }
@@ -1005,7 +1022,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         roots: [], // No mostramos raíces del árbol compartido
       };
 
-      console.log(`✅ Árbol compartido cargado: ${formattedBranches.length} ramas, ${formattedFruits.length} frutos`);
+      console.log(`✅ Árbol compartido cargado (en tiempo real): ${formattedBranches.length} ramas, ${formattedFruits.length} frutos`);
       set({ sharedTree, viewingTree: sharedTree, isLoading: false, error: null });
     } catch (error: any) {
       console.error('❌ Error en fetchSharedTree:', error);

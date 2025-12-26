@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Image, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, Image, ActivityIndicator, Platform, Switch } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useTreeStore } from '@/stores/treeStore';
 import colors from '@/constants/colors';
 import { useThemeStore } from '@/stores/themeStore';
-import { Image as ImageIcon, X, Video, Save } from 'lucide-react-native';
+import { Image as ImageIcon, X, Video, Save, Lock, Globe } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadMedia } from '@/lib/storageHelper';
 import { useUserStore } from '@/stores/userStore';
@@ -21,6 +21,7 @@ export default function EditFruitScreen() {
   const [description, setDescription] = useState('');
   const [selectedBranch, setSelectedBranch] = useState('');
   const [mediaUrls, setMediaUrls] = useState<string[]>([]);
+  const [isPublic, setIsPublic] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -36,6 +37,7 @@ export default function EditFruitScreen() {
         setDescription(fruit.description || '');
         setSelectedBranch(fruit.branchId);
         setMediaUrls(fruit.mediaUrls || []);
+        setIsPublic(fruit.isPublic !== undefined ? fruit.isPublic : true);
         setIsLoading(false);
       } else {
         Alert.alert('Error', 'Recuerdo no encontrado');
@@ -102,6 +104,7 @@ export default function EditFruitScreen() {
         description: description.trim(),
         branchId: selectedBranch,
         mediaUrls: mediaUrls,
+        isPublic: isPublic,
       });
 
       Alert.alert('¡Guardado!', 'El recuerdo se ha actualizado correctamente.', [
@@ -174,6 +177,35 @@ export default function EditFruitScreen() {
             placeholder="Cuéntalo todo..."
             placeholderTextColor={isDarkMode ? '#666' : colors.gray}
           />
+        </View>
+
+        <View style={styles.group}>
+          <Text style={[styles.label, isDarkMode && styles.textWhite]}>Privacidad</Text>
+          <View style={[styles.privacyContainer, isDarkMode && styles.privacyContainerDark]}>
+            <View style={styles.privacyHeader}>
+              {isPublic ? (
+                <Globe size={20} color={colors.primary} />
+              ) : (
+                <Lock size={20} color={isDarkMode ? '#666' : colors.gray} />
+              )}
+              <View style={styles.privacyTextContainer}>
+                <Text style={[styles.privacyLabel, isDarkMode && styles.textWhite]}>
+                  {isPublic ? 'Público' : 'Privado'}
+                </Text>
+                <Text style={[styles.privacyHint, isDarkMode && styles.textLight]}>
+                  {isPublic 
+                    ? 'Visible para tus familiares' 
+                    : 'Solo tú puedes verlo'}
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={isPublic}
+              onValueChange={setIsPublic}
+              trackColor={{ false: isDarkMode ? '#444' : colors.lightGray, true: colors.primaryLight }}
+              thumbColor={isPublic ? colors.primary : (isDarkMode ? '#666' : colors.gray)}
+            />
+          </View>
         </View>
 
         <View style={styles.group}>
@@ -308,4 +340,38 @@ const styles = StyleSheet.create({
   },
   disabled: { opacity: 0.7 },
   saveText: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
+  privacyContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+  },
+  privacyContainerDark: {
+    backgroundColor: '#2C2C2C',
+    borderColor: '#444',
+  },
+  privacyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 12,
+  },
+  privacyTextContainer: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  privacyLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.text,
+  },
+  privacyHint: {
+    fontSize: 12,
+    color: colors.textLight,
+    marginTop: 4,
+  },
 });

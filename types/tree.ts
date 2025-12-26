@@ -14,7 +14,7 @@ export type BranchType = {
   // ❌ NO incluir userId - no existe en el esquema SQL
 };
 
-// Tabla fruits: id, branch_id, title, description, media_urls, date, is_shared, position, created_at
+// Tabla fruits: id, branch_id, title, description, media_urls, date, is_shared, is_public, position, created_at
 // ⚠️ NO tiene: user_id, tree_id, location
 export type FruitType = {
   id: string;
@@ -24,7 +24,8 @@ export type FruitType = {
   mediaUrls?: string[]; // Mapeado desde media_urls
   date?: string; // Mapeado desde date
   createdAt: string; // Mapeado desde created_at
-  isShared: boolean; // Mapeado desde is_shared
+  isShared: boolean; // Mapeado desde is_shared (legacy, mantener para compatibilidad)
+  isPublic?: boolean; // Mapeado desde is_public (nuevo campo de privacidad granular)
   position?: { x: number; y: number };
   // Campos legacy/compatibilidad (no están en el SQL pero se mantienen para compatibilidad)
   tags?: string[];

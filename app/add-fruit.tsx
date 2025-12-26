@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Image, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Image, ActivityIndicator, Alert, Switch } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { useTreeStore } from '@/stores/treeStore';
 import colors from '@/constants/colors';
-import { Image as ImageIcon, MapPin, Users, Heart, Tag } from 'lucide-react-native';
+import { Image as ImageIcon, MapPin, Users, Heart, Tag, Lock, Globe } from 'lucide-react-native';
 
 export default function AddFruitScreen() {
   const { branchId } = useLocalSearchParams<{ branchId?: string }>();
@@ -19,6 +19,7 @@ export default function AddFruitScreen() {
   const [emotions, setEmotions] = useState('');
   const [tags, setTags] = useState('');
   const [mediaUrl, setMediaUrl] = useState('https://images.unsplash.com/photo-1464349095431-e9a21285b5f3?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80');
+  const [isPublic, setIsPublic] = useState(true); // Por defecto público
   const [isSaving, setIsSaving] = useState(false);
 
   // Asegurarnos de que tenemos datos del árbol al entrar
@@ -48,6 +49,7 @@ export default function AddFruitScreen() {
         people: people.split(',').map(person => person.trim()).filter(person => person),
         emotions: emotions.split(',').map(emotion => emotion.trim()).filter(emotion => emotion),
         isShared: false,
+        isPublic: isPublic,
         position: {
           x: Math.random() * 0.6 + 0.2,
           y: Math.random() * 0.6 + 0.2,
@@ -159,6 +161,33 @@ export default function AddFruitScreen() {
           {mediaUrl && (
             <Image source={{ uri: mediaUrl }} style={styles.previewImage} />
           )}
+        </View>
+
+        {/* Privacidad */}
+        <View style={styles.formGroup}>
+          <View style={styles.privacyContainer}>
+            <View style={styles.privacyHeader}>
+              {isPublic ? (
+                <Globe size={20} color={colors.primary} />
+              ) : (
+                <Lock size={20} color={colors.gray} />
+              )}
+              <View style={styles.privacyTextContainer}>
+                <Text style={styles.label}>Privacidad</Text>
+                <Text style={styles.privacyHint}>
+                  {isPublic 
+                    ? 'Este recuerdo será visible para tus familiares' 
+                    : 'Este recuerdo será privado, solo tú podrás verlo'}
+                </Text>
+              </View>
+            </View>
+            <Switch
+              value={isPublic}
+              onValueChange={setIsPublic}
+              trackColor={{ false: colors.lightGray, true: colors.primaryLight }}
+              thumbColor={isPublic ? colors.primary : colors.gray}
+            />
+          </View>
         </View>
 
         {/* Campos adicionales opcionales */}
@@ -284,5 +313,30 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  privacyContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.white,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  privacyHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+    marginRight: 12,
+  },
+  privacyTextContainer: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  privacyHint: {
+    fontSize: 12,
+    color: colors.textLight,
+    marginTop: 4,
   },
 });

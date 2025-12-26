@@ -12,14 +12,33 @@ export default function RegisterScreen() {
   const { register, isLoading } = useUserStore();
   const router = useRouter();
 
+  // Función de validación de contraseña
+  const validatePassword = (pwd: string): { isValid: boolean; message?: string } => {
+    if (pwd.length < 8) {
+      return { isValid: false, message: 'La contraseña debe tener al menos 8 caracteres.' };
+    }
+    if (!/[A-Z]/.test(pwd)) {
+      return { isValid: false, message: 'La contraseña debe contener al menos una mayúscula.' };
+    }
+    if (!/[a-z]/.test(pwd)) {
+      return { isValid: false, message: 'La contraseña debe contener al menos una minúscula.' };
+    }
+    if (!/[0-9]/.test(pwd)) {
+      return { isValid: false, message: 'La contraseña debe contener al menos un número.' };
+    }
+    return { isValid: true };
+  };
+
   const handleRegister = async () => {
     if (!name || !email || !password) {
       Alert.alert('Faltan datos', 'Por favor, completa todos los campos.');
       return;
     }
 
-    if (password.length < 6) {
-      Alert.alert('Contraseña débil', 'La contraseña debe tener al menos 6 caracteres.');
+    // Validar contraseña con los nuevos requisitos
+    const passwordValidation = validatePassword(password);
+    if (!passwordValidation.isValid) {
+      Alert.alert('Contraseña inválida', passwordValidation.message || 'La contraseña no cumple los requisitos.');
       return;
     }
 
@@ -41,11 +60,10 @@ export default function RegisterScreen() {
           ]
         );
       } else {
-        // Esto no debería pasar si la confirmación de email está desactivada,
-        // pero por si acaso mostramos un mensaje
+        // Si no hay sesión, significa que el email requiere confirmación
         Alert.alert(
           'Registro exitoso',
-          'Tu cuenta ha sido creada. Por favor, inicia sesión.',
+          'Por favor, revisa tu correo electrónico para verificar tu cuenta antes de iniciar sesión.',
           [
             {
               text: 'OK',
@@ -127,10 +145,13 @@ export default function RegisterScreen() {
                 style={styles.input}
                 value={password}
                 onChangeText={setPassword}
-                placeholder="Mínimo 6 caracteres"
+                placeholder="Mín. 8 caracteres, 1 mayúscula, 1 minúscula, 1 número"
                 placeholderTextColor={colors.gray}
                 secureTextEntry
               />
+              <Text style={styles.passwordHint}>
+                La contraseña debe tener al menos 8 caracteres, incluyendo una mayúscula, una minúscula y un número.
+              </Text>
             </View>
 
             <Text style={styles.termsText}>
@@ -164,7 +185,7 @@ export default function RegisterScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  scrollContainer: { flexGrow: 1, padding: 24 },
+  scrollContainer: { flexGrow: 1, padding: 24, paddingBottom: 60 },
   backButton: { marginTop: 40, marginBottom: 20 },
   header: { marginBottom: 30 },
   title: { fontSize: 32, fontWeight: 'bold', color: colors.text, marginBottom: 10 },
@@ -175,6 +196,7 @@ const styles = StyleSheet.create({
   input: { backgroundColor: colors.white, borderRadius: 12, padding: 16, fontSize: 16, borderWidth: 1, borderColor: colors.border },
   termsText: { fontSize: 13, color: colors.textLight, marginBottom: 24, lineHeight: 20, textAlign: 'center' },
   termsLink: { color: colors.primary, fontWeight: 'bold' },
+  passwordHint: { fontSize: 12, color: colors.textLight, marginTop: 6, lineHeight: 16 },
   registerButton: { backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 18, alignItems: 'center', shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
   registerButtonText: { color: colors.white, fontSize: 18, fontWeight: 'bold' },
   loginContainer: { flexDirection: 'row', justifyContent: 'center', marginTop: 30, marginBottom: 20 },

@@ -4,7 +4,8 @@ import { Home, Leaf, Gift, User } from 'lucide-react-native';
 import colors from '@/constants/colors';
 import AddButton from '@/components/AddButton';
 import AIFloatingButton from '@/components/AIFloatingButton';
-import { View, StyleSheet, Dimensions } from 'react-native';
+import { View, StyleSheet, Dimensions, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useGiftStore } from '@/stores/giftStore';
 import { useThemeStore } from '@/stores/themeStore';
 
@@ -15,6 +16,8 @@ export default function TabLayout() {
   const { theme } = useThemeStore();
   const isDarkMode = theme === 'dark';
   const unreadGifts = gifts.filter(gift => gift.isNew).length;
+  const insets = useSafeAreaInsets();
+  const tabBarHeight = 70 + (Platform.OS === 'ios' ? insets.bottom : 0);
 
   return (
     <>
@@ -23,8 +26,8 @@ export default function TabLayout() {
           tabBarActiveTintColor: colors.primary,
           tabBarInactiveTintColor: isDarkMode ? '#AAA' : colors.gray,
           tabBarStyle: {
-            height: 90,
-            paddingBottom: 25,
+            height: tabBarHeight,
+            paddingBottom: Platform.OS === 'ios' ? insets.bottom : 20,
             paddingTop: 15,
             backgroundColor: isDarkMode ? '#1E1E1E' : colors.white,
             borderTopColor: isDarkMode ? '#333' : colors.lightGray,

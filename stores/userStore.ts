@@ -383,8 +383,9 @@ export const useUserStore = create<UserState>((set, get) => ({
         throw authError;
       }
 
-      // Si el registro devuelve una sesión (sin confirmación de email), crear perfil y actualizar estado
-      if (data.session && data.user) {
+      // Si el registro devuelve una sesión Y el usuario está confirmado, crear perfil y actualizar estado
+      // Si no hay sesión o el usuario no está confirmado, no intentar auto-login
+      if (data.session && data.user && data.user.email_confirmed_at) {
         const profile = await get().ensureProfile(
           data.user.id,
           data.user.email || email,
@@ -401,6 +402,7 @@ export const useUserStore = create<UserState>((set, get) => ({
 
         return { session: profile ? data.session : null };
       } else {
+        // Usuario no confirmado o sin sesión: no hacer auto-login
         set({ isLoading: false });
         return { session: null };
       }
@@ -447,34 +449,63 @@ export const useUserStore = create<UserState>((set, get) => ({
 
       if (error) {
         console.error('❌ [Google Auth] Error:', error);
-        throw error;
+        // Mejorar mensajes de error
+        let errorMessage = error.message || 'Error al iniciar sesión con Google';
+        if (error.message?.includes('network') || error.message?.includes('Network')) {
+          errorMessage = 'Error de conexión. Por favor, verifica tu conexión a internet e inténtalo de nuevo.';
+        } else if (error.message?.includes('redirect')) {
+          errorMessage = 'Error en la configuración de redirección. Por favor, contacta con soporte.';
+        }
+        set({ error: errorMessage, isLoading: false });
+        throw new Error(errorMessage);
       }
 
       if (data?.url) {
         // Abrir en el navegador y esperar la redirección
-        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
-        
-        console.log('🔵 [Google Auth] Result:', result);
-
-        // Si la sesión se completó, el listener onAuthStateChange actualizará el estado
-        if (result.type === 'success' && result.url) {
-          // Parsear la URL para extraer tokens si es necesario
-          const url = new URL(result.url);
-          const accessToken = url.searchParams.get('access_token');
-          const refreshToken = url.searchParams.get('refresh_token');
+        try {
+          const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
           
-          if (accessToken || refreshToken) {
-            // La sesión debería actualizarse automáticamente por el listener
-            console.log('✅ [Google Auth] Sesión iniciada');
+          console.log('🔵 [Google Auth] Result:', result);
+
+          // Si la sesión se completó, el listener onAuthStateChange actualizará el estado
+          if (result.type === 'success' && result.url) {
+            // Parsear la URL para extraer tokens si es necesario
+            const url = new URL(result.url);
+            const accessToken = url.searchParams.get('access_token');
+            const refreshToken = url.searchParams.get('refresh_token');
+            
+            if (accessToken || refreshToken) {
+              // La sesión debería actualizarse automáticamente por el listener
+              console.log('✅ [Google Auth] Sesión iniciada');
+            }
+          } else if (result.type === 'cancel') {
+            // Usuario canceló el proceso
+            console.log('⚠️ [Google Auth] Usuario canceló');
+            set({ isLoading: false });
+            return;
           }
+        } catch (browserError: any) {
+          console.error('❌ [Google Auth] Error abriendo navegador:', browserError);
+          let errorMessage = 'No se pudo abrir el navegador para autenticación.';
+          if (browserError.message?.includes('network') || browserError.message?.includes('Network')) {
+            errorMessage = 'Error de conexión. Por favor, verifica tu conexión a internet.';
+          }
+          set({ error: errorMessage, isLoading: false });
+          throw new Error(errorMessage);
         }
+      } else {
+        throw new Error('No se recibió URL de autenticación de Google.');
       }
     } catch (error: any) {
       console.error('❌ [Google Auth] Error completo:', error);
-      set({ error: error.message || 'Error al iniciar sesión con Google', isLoading: false });
+      // Si el error no tiene mensaje personalizado, usar el genérico
+      if (!error.message || error.message === 'Error al iniciar sesión con Google') {
+        set({ error: error.message || 'Error al iniciar sesión con Google. Por favor, inténtalo de nuevo.', isLoading: false });
+      }
       throw error;
     } finally {
-      set({ isLoading: false });
+      // Solo desactivar loading si no hubo éxito (el listener lo manejará en caso de éxito)
+      // Pero si hubo un error, ya lo desactivamos arriba
     }
   }
 }));

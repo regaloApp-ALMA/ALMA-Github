@@ -28,7 +28,7 @@
     "web": {
       "favicon": "./assets/favicon.png",
       "title": "ALMA: Tu legado digital",
-      "name": "ALMA Legado",
+      "name": "ALMA",
       "shortName": "ALMA",
       "display": "standalone",
       "splash": {
