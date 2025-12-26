@@ -76,27 +76,30 @@ export default function AddBranchScreen() {
   };
 
   return (
-    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-      <View style={{ flex: 1 }}>
-        <Stack.Screen
-          options={{
-            title: 'Nueva Rama',
-            headerStyle: { backgroundColor: isDarkMode ? '#1E1E1E' : colors.primary },
-            headerTintColor: colors.white,
-          }}
-        />
+    <>
+      <Stack.Screen
+        options={{
+          title: 'Nueva Rama',
+          headerStyle: { backgroundColor: isDarkMode ? '#1E1E1E' : colors.primary },
+          headerTintColor: colors.white,
+        }}
+      />
 
-        <ScrollView style={[styles.container, isDarkMode && styles.containerDark]}>
-          <View style={styles.formGroup}>
-            <Text style={[styles.label, isDarkMode && styles.labelDark]}>Nombre de la rama</Text>
-            <TextInput
-              style={[styles.input, isDarkMode && styles.inputDark]}
-              value={name}
-              onChangeText={setName}
-              placeholder="Ej: Viajes inolvidables"
-              placeholderTextColor={isDarkMode ? '#666' : colors.gray}
-              onFocus={() => setShowSuggestions(true)}
-            />
+      <ScrollView 
+        style={[styles.container, isDarkMode && styles.containerDark]}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: 40 }}
+      >
+        <View style={styles.formGroup}>
+          <Text style={[styles.label, isDarkMode && styles.labelDark]}>Nombre de la rama</Text>
+          <TextInput
+            style={[styles.input, isDarkMode && styles.inputDark]}
+            value={name}
+            onChangeText={setName}
+            placeholder="Ej: Viajes inolvidables"
+            placeholderTextColor={isDarkMode ? '#666' : colors.gray}
+            onFocus={() => setShowSuggestions(true)}
+          />
 
             {showSuggestions && (
               <View style={[styles.suggestionsContainer, isDarkMode && styles.suggestionsContainerDark]}>
@@ -140,7 +143,6 @@ export default function AddBranchScreen() {
             <Text style={styles.createButtonText}>Crear Rama</Text>
           </TouchableOpacity>
         </ScrollView>
-      </View>
-    </TouchableWithoutFeedback>
+    </>
   );
 }

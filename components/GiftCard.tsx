@@ -51,7 +51,7 @@ const GiftCard = ({ gift, onAccept, onReject }: GiftCardProps) => {
       </View>
       
       <Text style={styles.title}>
-        {isTimeCapsule ? `Cápsula del tiempo "${gift.contentId.replace('capsule_', '')}"` : `Rama "${gift.contentId.replace('branch_', '').replace('_', ' ')}"`}
+        {gift.contentData?.title || gift.contentId || 'Regalo'}
       </Text>
       
       <Text style={styles.sender}>De: {gift.senderName}</Text>

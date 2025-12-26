@@ -150,7 +150,7 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  scrollContainer: { flexGrow: 1, minHeight: '100%', paddingBottom: 60 },
+  scrollContainer: { flexGrow: 1, minHeight: '100%', paddingBottom: 100 },
   logoContainer: { height: '35%', alignItems: 'center', justifyContent: 'center', position: 'relative' },
   logoBackground: { position: 'absolute', width: '100%', height: '100%' },
   overlay: { position: 'absolute', width: '100%', height: '100%', backgroundColor: 'rgba(0, 0, 0, 0.5)' },

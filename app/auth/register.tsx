@@ -185,7 +185,7 @@ export default function RegisterScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  scrollContainer: { flexGrow: 1, padding: 24, paddingBottom: 60 },
+  scrollContainer: { flexGrow: 1, padding: 24, paddingBottom: 100 },
   backButton: { marginTop: 40, marginBottom: 20 },
   header: { marginBottom: 30 },
   title: { fontSize: 32, fontWeight: 'bold', color: colors.text, marginBottom: 10 },

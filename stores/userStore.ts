@@ -431,13 +431,15 @@ export const useUserStore = create<UserState>((set, get) => ({
   loginWithGoogle: async () => {
     set({ isLoading: true, error: null });
     try {
-      // Usar el scheme correcto para Expo Go
+      // Usar el scheme correcto dinámicamente
+      // En desarrollo: usar 'exp' para Expo Go, en producción usar el scheme de la app
       const redirectUrl = makeRedirectUri({
-        scheme: 'myapp',
-        path: 'auth/callback',
+        path: '/auth/callback',
+        // No especificar scheme explícitamente, dejar que makeRedirectUri lo determine automáticamente
       });
 
-      console.log('🔵 [Google Auth] Redirect URL:', redirectUrl);
+      console.log('🔵 [Google Auth] Redirect URL generada:', redirectUrl);
+      console.log('🔵 [Google Auth] Verifica que esta URL esté configurada en Supabase Dashboard > Authentication > URL Configuration > Redirect URLs');
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',

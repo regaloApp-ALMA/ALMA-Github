@@ -61,6 +61,7 @@ export default function FamilyScreen() {
     try {
       setLoading(true);
       // Buscar conexiones familiares - Incluir status y connection_id
+      // Filtrar solo conexiones activas (no pendientes de eliminación)
       const { data: connections, error } = await supabase
         .from('family_connections')
         .select(`
@@ -71,6 +72,7 @@ export default function FamilyScreen() {
           relative:profiles!relative_id (id, name, email, avatar_url)
         `)
         .eq('user_id', user.id)
+        .eq('status', 'active') // Solo mostrar conexiones activas
         .order('created_at', { ascending: false });
 
       if (error) {

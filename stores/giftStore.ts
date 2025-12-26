@@ -54,7 +54,7 @@ export const useGiftStore = create<GiftState>((set, get) => ({
         message: g.message,
         createdAt: g.created_at,
         status: g.status,
-        contentId: 'data', // Placeholder
+        contentId: g.content_data?.title || g.content_data?.name || 'Regalo', // Usar título del contenido real
         contentData: g.content_data, // Importante: datos reales
         unlockDate: g.unlock_date,
         isNew: !g.is_read
