@@ -2,17 +2,15 @@ import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Switch, Image, Alert } from 'react-native';
 import { useUserStore } from '@/stores/userStore';
 import { useTreeStore } from '@/stores/treeStore';
-import { useNotificationStore } from '@/stores/notificationStore';
 import colors from '@/constants/colors';
 import { ChevronRight, Share2, FileText, MessageSquare, HelpCircle, Settings, Bell, Lock, Database, LogOut, Moon, Sun } from 'lucide-react-native';
-import { useRouter, useFocusEffect, Stack } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useThemeStore } from '@/stores/themeStore';
 
 export default function ProfileScreen() {
   const { user, logout } = useUserStore();
   const { tree, fetchMyTree } = useTreeStore();
   const { theme, toggleTheme } = useThemeStore();
-  const { unreadCount, fetchNotifications } = useNotificationStore();
   const router = useRouter();
   const isDarkMode = theme === 'dark';
 
@@ -24,10 +22,7 @@ export default function ProfileScreen() {
   useFocusEffect(
     React.useCallback(() => {
       fetchMyTree(true); // Refresh cuando se enfoca la pantalla
-      if (user) {
-        fetchNotifications(); // Cargar notificaciones
-      }
-    }, [user])
+    }, [])
   );
 
   const handleLogout = async () => {
@@ -50,28 +45,7 @@ export default function ProfileScreen() {
   const avatarUrl = (user as any)?.avatar_url;
 
   return (
-    <>
-      <Stack.Screen
-        options={{
-          title: 'Perfil',
-          headerRight: () => (
-            <TouchableOpacity
-              onPress={() => router.push('/notifications')}
-              style={{ marginRight: 16, position: 'relative' }}
-            >
-              <Bell size={24} color={isDarkMode ? colors.white : colors.white} />
-              {unreadCount > 0 && (
-                <View style={styles.notificationBadge}>
-                  <Text style={styles.notificationBadgeText}>
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          ),
-        }}
-      />
-      <ScrollView style={[styles.container, isDarkMode && styles.containerDark]}>
+    <ScrollView style={[styles.container, isDarkMode && styles.containerDark]}>
       <View style={[styles.header, isDarkMode && styles.headerDark]}>
         <View style={styles.avatarContainer}>
           {avatarUrl ? (
@@ -208,7 +182,6 @@ export default function ProfileScreen() {
         <Text style={styles.logoutButtonText}>Cerrar sesión</Text>
       </TouchableOpacity>
     </ScrollView>
-    </>
   );
 }
 
@@ -241,23 +214,4 @@ const styles = StyleSheet.create({
   menuItemText: { fontSize: 16, color: colors.text, marginLeft: 16 },
   logoutButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.error, marginHorizontal: 16, marginVertical: 30, paddingVertical: 16, borderRadius: 12 },
   logoutButtonText: { color: colors.white, fontSize: 16, fontWeight: 'bold', marginLeft: 8 },
-  notificationBadge: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    backgroundColor: colors.error,
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
-    paddingHorizontal: 6,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: colors.white,
-  },
-  notificationBadgeText: {
-    color: colors.white,
-    fontSize: 10,
-    fontWeight: 'bold',
-  },
 });
