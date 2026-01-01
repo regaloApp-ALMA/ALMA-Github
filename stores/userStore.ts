@@ -322,10 +322,16 @@ export const useUserStore = create<UserState>((set, get) => ({
         } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
           // Verificar que la sesión sea válida antes de usarla
           if (session?.user) {
+            // Obtener nombre de Google (puede venir como full_name, name, o del email)
+            const googleName = (session.user.user_metadata as any)?.full_name || 
+                              (session.user.user_metadata as any)?.name ||
+                              session.user.email?.split('@')[0] || 
+                              'Usuario';
+            
             const profile = await get().ensureProfile(
               session.user.id,
               session.user.email || '',
-              (session.user.user_metadata as any)?.name,
+              googleName,
               (session.user.user_metadata as any)?.avatar_url
             );
 

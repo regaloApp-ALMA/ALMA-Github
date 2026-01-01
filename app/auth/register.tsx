@@ -54,14 +54,27 @@ export default function RegisterScreen() {
       
       // Si el registro fue exitoso y hay sesión (auto-login), redirigir inmediatamente
       if (result.session) {
-        // Redirigir inmediatamente sin mostrar alert (el useEffect también lo hará como respaldo)
+        // Redirigir primero, luego mostrar mensaje (no bloqueante)
         router.replace('/(tabs)');
+        // Mostrar mensaje después de un pequeño delay para no bloquear
+        setTimeout(() => {
+          Alert.alert(
+            '✅ Cuenta creada',
+            '¡Bienvenido a ALMA! Tu cuenta ha sido creada exitosamente.'
+          );
+        }, 300);
       } else {
         // Caso raro: sin verificación de email debería haber sesión, pero por si acaso
         // Esperar un momento y verificar si se actualizó el estado
         setTimeout(() => {
           if (isAuthenticated) {
             router.replace('/(tabs)');
+            setTimeout(() => {
+              Alert.alert(
+                '✅ Cuenta creada',
+                '¡Bienvenido a ALMA! Tu cuenta ha sido creada exitosamente.'
+              );
+            }, 300);
           } else {
             Alert.alert(
               'Cuenta creada',

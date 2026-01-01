@@ -431,8 +431,12 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   },
 
   deleteBranch: async (branchId) => {
-    const previousTree = get().tree;
+    const state = get();
+    const previousTree = state.tree;
+    const previousSharedTree = state.sharedTree;
+    const previousViewingTree = state.viewingTree;
 
+    // Actualización optimista: eliminar del estado local inmediatamente
     if (previousTree) {
       set({
         tree: {
@@ -443,14 +447,47 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       });
     }
 
+    // También actualizar sharedTree/viewingTree si están activos
+    if (previousSharedTree) {
+      set({
+        sharedTree: {
+          ...previousSharedTree,
+          branches: previousSharedTree.branches.filter(b => b.id !== branchId),
+          fruits: previousSharedTree.fruits.filter(f => f.branchId !== branchId)
+        }
+      });
+    }
+
+    if (previousViewingTree) {
+      set({
+        viewingTree: {
+          ...previousViewingTree,
+          branches: previousViewingTree.branches.filter(b => b.id !== branchId),
+          fruits: previousViewingTree.fruits.filter(f => f.branchId !== branchId)
+        }
+      });
+    }
+
     try {
       const { error } = await supabase.from('branches').delete().eq('id', branchId);
-      if (error) throw error;
+      if (error) {
+        // Si falla, restaurar todos los estados anteriores
+        set({ 
+          tree: previousTree,
+          sharedTree: previousSharedTree,
+          viewingTree: previousViewingTree
+        });
+        throw error;
+      }
 
+      console.log('✅ Rama borrada exitosamente');
     } catch (error: any) {
-      console.error('Error deleting branch:', error);
-      set({ tree: previousTree, error: 'No se pudo borrar la rama.' });
-      get().fetchMyTree();
+      console.error('❌ Error deleting branch:', error);
+      // El estado ya se restauró arriba si falló
+      set({ error: 'No se pudo borrar la rama.' });
+      // Recargar árbol para sincronizar
+      await get().fetchMyTree();
+      throw error;
     }
   },
 
@@ -568,13 +605,36 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   },
 
   deleteFruit: async (fruitId: string) => {
-    const previousTree = get().tree;
+    const state = get();
+    const previousTree = state.tree;
+    const previousSharedTree = state.sharedTree;
+    const previousViewingTree = state.viewingTree;
 
+    // Actualización optimista: eliminar del estado local inmediatamente
     if (previousTree) {
       set({
         tree: {
           ...previousTree,
           fruits: previousTree.fruits.filter(f => f.id !== fruitId)
+        }
+      });
+    }
+
+    // También actualizar sharedTree/viewingTree si están activos
+    if (previousSharedTree) {
+      set({
+        sharedTree: {
+          ...previousSharedTree,
+          fruits: previousSharedTree.fruits.filter(f => f.id !== fruitId)
+        }
+      });
+    }
+
+    if (previousViewingTree) {
+      set({
+        viewingTree: {
+          ...previousViewingTree,
+          fruits: previousViewingTree.fruits.filter(f => f.id !== fruitId)
         }
       });
     }
@@ -648,14 +708,24 @@ export const useTreeStore = create<TreeState>((set, get) => ({
 
       // 🗑️ PASO 3: Borrar el registro de la tabla fruits
       const { error } = await supabase.from('fruits').delete().eq('id', fruitId);
-      if (error) throw error;
+      if (error) {
+        // Si falla, restaurar todos los estados anteriores
+        set({ 
+          tree: previousTree,
+          sharedTree: previousSharedTree,
+          viewingTree: previousViewingTree
+        });
+        throw error;
+      }
 
       console.log('✅ Fruto borrado exitosamente (registro + archivos)');
 
     } catch (error: any) {
       console.error('❌ Error deleting fruit:', error);
-      set({ tree: previousTree, error: 'No se pudo borrar el recuerdo.' });
-      get().fetchMyTree();
+      // El estado ya se restauró arriba si falló
+      set({ error: 'No se pudo borrar el recuerdo.' });
+      // Recargar árbol para sincronizar
+      await get().fetchMyTree();
       throw error;
     }
   },

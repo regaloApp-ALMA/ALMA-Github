@@ -26,17 +26,27 @@ export default function LoginScreen() {
 
     try {
       await login(email, password);
-      // Redirigir inmediatamente después del login exitoso
+      // Redirigir inmediatamente, luego mostrar mensaje (no bloqueante)
       router.replace('/(tabs)');
+      // Mostrar mensaje después de un pequeño delay para no bloquear
+      setTimeout(() => {
+        Alert.alert(
+          '✅ Inicio de sesión exitoso',
+          '¡Bienvenido de nuevo a ALMA!'
+        );
+      }, 300);
     } catch (error: any) {
       let errorMessage = error.message || 'Credenciales incorrectas';
       
       if (error.message?.includes('Invalid login credentials') || 
           error.message?.includes('Invalid credentials')) {
-        errorMessage = 'Email o contraseña incorrectos. Por favor, verifica tus credenciales.';
+        errorMessage = '❌ Email o contraseña incorrectos. Por favor, verifica tus credenciales.';
+      } else if (error.message?.includes('User not found') || 
+                 error.message?.includes('does not exist')) {
+        errorMessage = '❌ Esta cuenta no existe. Por favor, regístrate primero.';
       }
       
-      Alert.alert('Error', errorMessage);
+      Alert.alert('Error de inicio de sesión', errorMessage);
     }
   };
 

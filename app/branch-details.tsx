@@ -119,7 +119,7 @@ export default function BranchDetailsScreen() {
   }
 
   // --- LÓGICA DE ELIMINAR ---
-  const handleDeleteBranch = () => {
+  const handleDeleteBranch = async () => {
     Alert.alert(
       "Eliminar Rama",
       "¿Estás seguro? Se borrarán todos los recuerdos dentro de esta rama. Esta acción no se puede deshacer.",
@@ -130,15 +130,12 @@ export default function BranchDetailsScreen() {
           style: "destructive",
           onPress: async () => {
             try {
-              // Borrar en Supabase (El 'on delete cascade' de la DB borrará los frutos automáticamente)
-              const { error } = await supabase.from('branches').delete().eq('id', id);
-              if (error) throw error;
-
+              await deleteBranch(id);
               // Recargar y salir
               await fetchMyTree();
               router.back();
             } catch (e: any) {
-              Alert.alert("Error", e.message);
+              Alert.alert("Error", e.message || "No se pudo eliminar la rama");
             }
           }
         }
