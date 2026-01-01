@@ -34,9 +34,6 @@ export default function LoginScreen() {
       if (error.message?.includes('Invalid login credentials') || 
           error.message?.includes('Invalid credentials')) {
         errorMessage = 'Email o contraseña incorrectos. Por favor, verifica tus credenciales.';
-      } else if (error.message?.includes('Email not confirmed') || 
-                 error.message?.includes('email_not_confirmed')) {
-        errorMessage = 'Debes verificar tu email primero. Por favor, revisa tu correo electrónico.';
       }
       
       Alert.alert('Error', errorMessage);

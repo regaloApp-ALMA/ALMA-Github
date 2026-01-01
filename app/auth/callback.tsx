@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useUserStore } from '@/stores/userStore';
 import colors from '@/constants/colors';
 
@@ -10,22 +10,42 @@ import colors from '@/constants/colors';
  */
 export default function AuthCallbackScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams();
-  const { isAuthenticated } = useUserStore();
+  const { isAuthenticated, initialize } = useUserStore();
 
   useEffect(() => {
-    // Esperar un momento para que el listener de auth actualice el estado
-    const timer = setTimeout(() => {
+    // El listener onAuthStateChange en initialize() actualizará el estado automáticamente
+    // Esperar a que isAuthenticated se actualice y redirigir
+    let timer: NodeJS.Timeout;
+    
+    const checkAndRedirect = () => {
       if (isAuthenticated) {
         router.replace('/(tabs)');
       } else {
-        // Si no se autenticó, volver al login
-        router.replace('/auth/login');
+        // Esperar un poco más si aún no está autenticado
+        timer = setTimeout(() => {
+          if (isAuthenticated) {
+            router.replace('/(tabs)');
+          } else {
+            // Si después de esperar aún no está autenticado, volver al login
+            router.replace('/auth/login');
+          }
+        }, 2000);
       }
-    }, 1000);
+    };
 
-    return () => clearTimeout(timer);
-  }, [isAuthenticated, router]);
+    // Inicializar para forzar verificación de sesión
+    initialize().then(() => {
+      // Esperar un momento para que el listener actualice el estado
+      timer = setTimeout(checkAndRedirect, 1000);
+    }).catch((error) => {
+      console.error('Error inicializando en callback:', error);
+      router.replace('/auth/login');
+    });
+
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [isAuthenticated, router, initialize]);
 
   return (
     <View style={styles.container}>

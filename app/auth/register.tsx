@@ -57,19 +57,26 @@ export default function RegisterScreen() {
         // Redirigir inmediatamente sin mostrar alert (el useEffect también lo hará como respaldo)
         router.replace('/(tabs)');
       } else {
-        // Si no hay sesión, significa que el email requiere confirmación
-        Alert.alert(
-          'Cuenta creada',
-          'Por favor, revisa tu correo electrónico para verificar tu cuenta antes de continuar.',
-          [
-            {
-              text: 'OK',
-              onPress: () => {
-                router.replace('/auth/login');
-              }
-            }
-          ]
-        );
+        // Caso raro: sin verificación de email debería haber sesión, pero por si acaso
+        // Esperar un momento y verificar si se actualizó el estado
+        setTimeout(() => {
+          if (isAuthenticated) {
+            router.replace('/(tabs)');
+          } else {
+            Alert.alert(
+              'Cuenta creada',
+              'Tu cuenta ha sido creada. Por favor, inicia sesión.',
+              [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    router.replace('/auth/login');
+                  }
+                }
+              ]
+            );
+          }
+        }, 500);
       }
     } catch (error: any) {
       // Manejar errores específicos de manera amigable

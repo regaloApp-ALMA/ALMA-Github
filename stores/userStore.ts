@@ -402,9 +402,9 @@ export const useUserStore = create<UserState>((set, get) => ({
         throw authError;
       }
 
-      // Si el registro devuelve una sesión Y el usuario está confirmado, crear perfil y actualizar estado
-      // Si no hay sesión o el usuario no está confirmado, no intentar auto-login
-      if (data.session && data.user && data.user.email_confirmed_at) {
+      // Si el registro devuelve una sesión, crear perfil y actualizar estado
+      // (Sin verificación de email, Supabase devuelve sesión directamente)
+      if (data.session && data.user) {
         const profile = await get().ensureProfile(
           data.user.id,
           data.user.email || email,
@@ -417,11 +417,35 @@ export const useUserStore = create<UserState>((set, get) => ({
           user: profile,
           isAuthenticated: !!profile,
           isLoading: false,
+          error: null,
         });
 
         return { session: profile ? data.session : null };
       } else {
-        // Usuario no confirmado o sin sesión: no hacer auto-login
+        // Si no hay sesión (caso raro sin verificación de email), intentar obtenerla
+        console.warn('⚠️ Registro sin sesión inmediata, intentando obtener sesión...');
+        const { data: { session: currentSession } } = await supabase.auth.getSession();
+        
+        if (currentSession && data.user) {
+          const profile = await get().ensureProfile(
+            data.user.id,
+            data.user.email || email,
+            name,
+            (data.user.user_metadata as any)?.avatar_url
+          );
+
+          set({
+            session: profile ? currentSession : null,
+            user: profile,
+            isAuthenticated: !!profile,
+            isLoading: false,
+            error: null,
+          });
+
+          return { session: profile ? currentSession : null };
+        }
+        
+        // Si aún no hay sesión, no hacer auto-login
         set({ isLoading: false });
         return { session: null };
       }
