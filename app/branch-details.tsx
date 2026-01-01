@@ -119,24 +119,41 @@ export default function BranchDetailsScreen() {
   }
 
   // --- LÓGICA DE ELIMINAR ---
-  const handleDeleteBranch = async () => {
+  const handleDeleteBranch = () => {
+    // PRIMERA ALERTA
     Alert.alert(
       "Eliminar Rama",
       "¿Estás seguro? Se borrarán todos los recuerdos dentro de esta rama. Esta acción no se puede deshacer.",
       [
         { text: "Cancelar", style: "cancel" },
         {
-          text: "Eliminar",
+          text: "Sí, eliminar",
           style: "destructive",
-          onPress: async () => {
-            try {
-              await deleteBranch(id);
-              // Recargar y salir
-              await fetchMyTree();
-              router.back();
-            } catch (e: any) {
-              Alert.alert("Error", e.message || "No se pudo eliminar la rama");
-            }
+          onPress: () => {
+            // SEGUNDA ALERTA (CONFIRMACIÓN FINAL)
+            setTimeout(() => {
+              Alert.alert(
+                "¿Estás absolutamente seguro?",
+                "Esta acción no se puede deshacer. Se borrarán todos los recuerdos de esta rama permanentemente.",
+                [
+                  { text: "No, espera", style: "cancel" },
+                  {
+                    text: "Sí, bórrala definitivamente",
+                    style: "destructive",
+                    onPress: async () => {
+                      try {
+                        await deleteBranch(id);
+                        // Recargar y salir
+                        await fetchMyTree();
+                        router.back();
+                      } catch (e: any) {
+                        Alert.alert("Error", e.message || "No se pudo eliminar la rama");
+                      }
+                    }
+                  }
+                ]
+              );
+            }, 200);
           }
         }
       ]

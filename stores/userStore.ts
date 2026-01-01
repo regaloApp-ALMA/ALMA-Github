@@ -328,6 +328,12 @@ export const useUserStore = create<UserState>((set, get) => ({
                               session.user.email?.split('@')[0] || 
                               'Usuario';
             
+            // Obtener nombre de Google (puede venir como full_name, name, o del email)
+            const googleName = (session.user.user_metadata as any)?.full_name || 
+                              (session.user.user_metadata as any)?.name ||
+                              session.user.email?.split('@')[0] || 
+                              'Usuario';
+            
             const profile = await get().ensureProfile(
               session.user.id,
               session.user.email || '',
