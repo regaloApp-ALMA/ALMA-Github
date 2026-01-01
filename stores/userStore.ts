@@ -358,8 +358,27 @@ export const useUserStore = create<UserState>((set, get) => ({
         set({ error: error.message, isLoading: false });
         throw error;
       }
-      // El listener onAuthStateChange actualizará el estado automáticamente
-      set({ isLoading: false });
+      
+      // Actualizar el estado inmediatamente después de un login exitoso
+      // El listener onAuthStateChange también actualizará como respaldo
+      if (data.session && data.user) {
+        const profile = await get().ensureProfile(
+          data.user.id,
+          data.user.email || email,
+          (data.user.user_metadata as any)?.name,
+          (data.user.user_metadata as any)?.avatar_url
+        );
+
+        set({
+          session: profile ? data.session : null,
+          user: profile,
+          isAuthenticated: !!profile,
+          isLoading: false,
+          error: null,
+        });
+      } else {
+        set({ isLoading: false });
+      }
     } catch (error: any) {
       set({ error: error.message, isLoading: false });
       throw error;

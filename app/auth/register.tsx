@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, ActivityIndicator, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import colors from '@/constants/colors';
@@ -9,8 +9,15 @@ export default function RegisterScreen() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const { register, isLoading } = useUserStore();
+  const { register, isLoading, isAuthenticated } = useUserStore();
   const router = useRouter();
+
+  // Redirigir automáticamente si ya está autenticado (después de registro exitoso)
+  useEffect(() => {
+    if (isAuthenticated) {
+      router.replace('/(tabs)');
+    }
+  }, [isAuthenticated]);
 
   // Función de validación de contraseña
   const validatePassword = (pwd: string): { isValid: boolean; message?: string } => {
@@ -45,8 +52,11 @@ export default function RegisterScreen() {
     try {
       const result = await register(name, email, password);
       
-      // Si el registro fue exitoso y hay sesión (auto-login), redirigir a la app
+      // Si el registro fue exitoso y hay sesión (auto-login), el useEffect redirigirá automáticamente
       if (result.session) {
+        // El estado isAuthenticated se actualizará inmediatamente en el store
+        // y el useEffect se encargará de la redirección automática
+        // Mostrar mensaje de éxito sin bloquear la navegación
         Alert.alert(
           '¡Cuenta creada!',
           'Bienvenido a ALMA. Tu cuenta ha sido creada exitosamente.',
@@ -54,10 +64,11 @@ export default function RegisterScreen() {
             {
               text: 'Continuar',
               onPress: () => {
-                router.replace('/(tabs)');
+                // La redirección ya se hizo automáticamente por el useEffect
               }
             }
-          ]
+          ],
+          { cancelable: false }
         );
       } else {
         // Si no hay sesión, significa que el email requiere confirmación

@@ -26,9 +26,8 @@ export default function LoginScreen() {
 
     try {
       await login(email, password);
-      // El listener del store actualizará isAuthenticated, y el useEffect redirigirá
-      // Pero por seguridad, también redirigimos aquí
-      router.replace('/(tabs)');
+      // El listener del store actualizará isAuthenticated, y el useEffect redirigirá automáticamente
+      // No redirigir aquí para evitar doble redirección
     } catch (error: any) {
       let errorMessage = error.message || 'Credenciales incorrectas';
       
