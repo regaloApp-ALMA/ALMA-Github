@@ -60,9 +60,9 @@ export default function BranchDetailsScreen() {
               .select('*')
               .eq('branch_id', id);
 
-            // Si NO es el dueño, solo frutos compartidos
+            // Si NO es el dueño, solo frutos públicos
             if (!isOwnerBranch) {
-              fruitsQuery = fruitsQuery.eq('is_shared', true);
+              fruitsQuery = fruitsQuery.eq('is_public', true);
             }
 
             const { data: fruits, error: fruitsError } = await fruitsQuery
@@ -87,7 +87,8 @@ export default function BranchDetailsScreen() {
   const branchFruits = activeTree 
     ? activeTree.fruits.filter(f => {
         if (f.branchId === id) {
-          return isOwner || f.isShared;
+          // Si es el dueño, ver todos los frutos. Si no, solo los públicos
+          return isOwner || (f.isPublic !== undefined ? f.isPublic : true);
         }
         return false;
       })
@@ -99,6 +100,7 @@ export default function BranchDetailsScreen() {
         mediaUrls: f.media_urls || [],
         createdAt: f.created_at,
         isShared: f.is_shared || false,
+        isPublic: f.is_public !== undefined ? f.is_public : true,
         position: f.position || { x: 0, y: 0 },
       }));
 
@@ -191,7 +193,7 @@ export default function BranchDetailsScreen() {
         <View style={[styles.header, { backgroundColor: branch.color || colors.primary }]}>
           <View style={styles.headerContent}>
             <Text style={styles.branchInfo}>
-              {branchFruits.length} recuerdos • Creada el {new Date(branch.createdAt || branch.created_at).toLocaleDateString()}
+              {branchFruits.length} {branchFruits.length === 1 ? 'recuerdo' : 'recuerdos'} • Creada el {new Date(branch.createdAt || branch.created_at).toLocaleDateString()}
             </Text>
 
             {finalIsOwner && (
@@ -219,15 +221,6 @@ export default function BranchDetailsScreen() {
                   ? 'Añade tu primer recuerdo para ver crecer esta rama.'
                   : 'Esta rama aún no tiene recuerdos compartidos.'}
               </Text>
-              {finalIsOwner && (
-                <TouchableOpacity
-                  style={[styles.addButton, { backgroundColor: branch.color || colors.primary }]}
-                  onPress={() => router.push(`/add-memory-options?branchId=${id}`)}
-                >
-                  <Plus size={20} color={colors.white} />
-                  <Text style={styles.addButtonText}>Añadir recuerdo</Text>
-                </TouchableOpacity>
-              )}
             </View>
           ) : (
             <View style={styles.fruitsContainer}>
@@ -255,6 +248,19 @@ export default function BranchDetailsScreen() {
             </View>
           )}
         </ScrollView>
+        
+        {/* Botón Añadir Recuerdo siempre visible */}
+        {finalIsOwner && (
+          <View style={styles.fixedAddButton}>
+            <TouchableOpacity
+              style={[styles.addButtonFixed, { backgroundColor: branch.color || colors.primary }]}
+              onPress={() => router.push(`/add-memory-options?branchId=${id}`)}
+            >
+              <Plus size={20} color={colors.white} />
+              <Text style={styles.addButtonText}>Añadir recuerdo</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     </>
   );
@@ -277,6 +283,8 @@ const styles = StyleSheet.create({
   emptyStateText: { fontSize: 14, color: colors.textLight, marginBottom: 20 },
   addButton: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 25 },
   addButtonText: { color: '#FFF', fontWeight: 'bold', marginLeft: 8 },
+  fixedAddButton: { position: 'absolute', bottom: 20, left: 16, right: 16, zIndex: 10 },
+  addButtonFixed: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, paddingHorizontal: 24, borderRadius: 25, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 5 },
   fruitsContainer: { paddingBottom: 40 },
   fruitCard: { backgroundColor: '#FFF', borderRadius: 12, marginBottom: 16, overflow: 'hidden', elevation: 2 },
   fruitCardDark: { backgroundColor: '#1E1E1E' },

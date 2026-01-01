@@ -64,7 +64,7 @@ interface TreeState {
   deleteBranch: (branchId: string) => Promise<void>;
 
   // Funciones de Frutos
-  addFruit: (fruit: Omit<FruitType, 'id' | 'createdAt'>) => Promise<void>;
+  addFruit: (fruit: Omit<FruitType, 'id' | 'createdAt'>) => Promise<string>; // Devuelve el ID del fruto creado
   updateFruit: (fruitId: string, updates: Partial<Omit<FruitType, 'id' | 'createdAt'>>) => Promise<void>;
   deleteFruit: (fruitId: string) => Promise<void>;
 }
@@ -519,6 +519,9 @@ export const useTreeStore = create<TreeState>((set, get) => ({
 
       // Actualizar racha
       useUserStore.getState().updateStreak();
+      
+      // Devolver el ID del fruto creado para redirección
+      return newFruit.id;
     } catch (e: any) {
       console.error('❌ Error en addFruit:', e);
       set({ error: e.message || 'No se pudo crear el recuerdo' });
@@ -979,12 +982,20 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       let formattedFruits: FruitType[] = [];
 
       if (branchIds.length > 0) {
-        // La política RLS filtra automáticamente: solo veo frutos públicos si no soy dueño
-        // No necesitamos filtrar manualmente por is_public aquí, RLS lo hace
-        const { data: fruits, error: fruitsError } = await supabase
+        // Si NO soy el dueño, filtrar explícitamente solo frutos públicos
+        const userId = useUserStore.getState().user?.id;
+        const isOwner = treeData.owner_id === userId;
+        
+        let fruitsQuery = supabase
           .from('fruits')
           .select('*')
-          .in('branch_id', branchIds)
+          .in('branch_id', branchIds);
+        
+        if (!isOwner) {
+          fruitsQuery = fruitsQuery.eq('is_public', true);
+        }
+        
+        const { data: fruits, error: fruitsError } = await fruitsQuery
           .order('created_at', { ascending: false });
 
         if (fruitsError) {

@@ -52,29 +52,15 @@ export default function RegisterScreen() {
     try {
       const result = await register(name, email, password);
       
-      // Si el registro fue exitoso y hay sesión (auto-login), el useEffect redirigirá automáticamente
+      // Si el registro fue exitoso y hay sesión (auto-login), redirigir inmediatamente
       if (result.session) {
-        // El estado isAuthenticated se actualizará inmediatamente en el store
-        // y el useEffect se encargará de la redirección automática
-        // Mostrar mensaje de éxito sin bloquear la navegación
-        Alert.alert(
-          '¡Cuenta creada!',
-          'Bienvenido a ALMA. Tu cuenta ha sido creada exitosamente.',
-          [
-            {
-              text: 'Continuar',
-              onPress: () => {
-                // La redirección ya se hizo automáticamente por el useEffect
-              }
-            }
-          ],
-          { cancelable: false }
-        );
+        // Redirigir inmediatamente sin mostrar alert (el useEffect también lo hará como respaldo)
+        router.replace('/(tabs)');
       } else {
         // Si no hay sesión, significa que el email requiere confirmación
         Alert.alert(
-          'Registro exitoso',
-          'Por favor, revisa tu correo electrónico para verificar tu cuenta antes de iniciar sesión.',
+          'Cuenta creada',
+          'Por favor, revisa tu correo electrónico para verificar tu cuenta antes de continuar.',
           [
             {
               text: 'OK',

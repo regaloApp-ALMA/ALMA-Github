@@ -219,7 +219,7 @@ NO hagas descripciones como: "Fue un día especial con mi familia." Eso es demas
       }
 
       // Guardar el recuerdo con las URLs públicas
-      await addFruit({
+      const fruitId = await addFruit({
         title: generatedMemory.title,
         description: generatedMemory.description,
         branchId: selectedBranchId,
@@ -228,8 +228,8 @@ NO hagas descripciones como: "Fue un día especial con mi familia." Eso es demas
         position: { x: 0, y: 0 }
       } as any);
 
-      Alert.alert("¡Guardado!", "Tu recuerdo ya brilla en tu árbol.");
-      router.push('/(tabs)/tree');
+      // Redirigir al detalle del fruto recién creado
+      router.replace({ pathname: '/fruit-details', params: { id: fruitId } });
     } catch (error: any) {
       Alert.alert("Error", error.message);
     } finally {

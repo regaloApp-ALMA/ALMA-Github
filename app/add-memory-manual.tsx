@@ -112,7 +112,7 @@ export default function AddMemoryManualScreen() {
       }
 
       // Guardar el recuerdo con las URLs públicas
-      await addFruit({
+      const fruitId = await addFruit({
         title: title.trim(),
         description: description.trim(),
         branchId: selectedBranch,
@@ -121,7 +121,8 @@ export default function AddMemoryManualScreen() {
         position: { x: 0, y: 0 }
       } as any);
 
-      router.push('/(tabs)/tree');
+      // Redirigir al detalle del fruto recién creado
+      router.replace({ pathname: '/fruit-details', params: { id: fruitId } });
     } catch (error: any) {
       Alert.alert('Error', error.message);
     } finally {

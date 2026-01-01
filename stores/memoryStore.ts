@@ -75,15 +75,24 @@ export const useMemoryStore = create<MemoryState>((set) => ({
           const today = new Date();
           const dayMs = 24 * 60 * 60 * 1000;
 
-          // Filtrar recuerdos cercanos a hoy (±7 días)
+          // Filtrar recuerdos: día y mes actual, años anteriores, con rango de +/- 15 días
+          const todayMonth = today.getMonth();
+          const todayDay = today.getDate();
+          
           const filteredMemories = (fruits || []).filter((f: any) => {
             if (!f.date) return false;
             const d = new Date(f.date);
-            // Comparación aproximada: diferencia absoluta en días (ignorando zona horaria fina)
+            const memoryMonth = d.getMonth();
+            const memoryDay = d.getDate();
+            
+            // Calcular diferencia en días (ignorando año)
+            const thisYear = new Date(today.getFullYear(), memoryMonth, memoryDay);
             const diffDays = Math.abs(
-              Math.floor((d.getTime() - today.getTime()) / dayMs)
+              Math.floor((thisYear.getTime() - today.getTime()) / dayMs)
             );
-            return diffDays <= 7; // ventana de 1 semana antes / después
+            
+            // Incluir si está en el rango de +/- 15 días del día/mes actual
+            return diffDays <= 15;
           });
 
           // Ordenar por antigüedad: los más antiguos primero (priorizar recuerdos de hace años)
@@ -138,16 +147,25 @@ export const useMemoryStore = create<MemoryState>((set) => ({
               .order('created_at', { ascending: false })
               .limit(10);
 
-            // Formatear para la UI
-            activities = (recentFruits || []).map((f: any) => ({
-              id: f.id,
-              userId: f.branch?.tree?.owner?.id, // Dato aproximado
-              userName: f.branch?.tree?.owner?.name || 'Familiar',
-              userInitial: (f.branch?.tree?.owner?.name || 'F').charAt(0),
-              action: `añadió el recuerdo "${f.title}"`,
-              timestamp: f.created_at,
-              timeAgo: 'recientemente' // Podríamos usar date-fns aquí
-            }));
+            // Filtrar actividad de los últimos 7 días
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            
+            // Formatear para la UI y filtrar por fecha
+            activities = (recentFruits || [])
+              .filter((f: any) => {
+                const createdAt = new Date(f.created_at);
+                return createdAt >= sevenDaysAgo;
+              })
+              .map((f: any) => ({
+                id: f.id,
+                userId: f.branch?.tree?.owner?.id, // Dato aproximado
+                userName: f.branch?.tree?.owner?.name || 'Familiar',
+                userInitial: (f.branch?.tree?.owner?.name || 'F').charAt(0),
+                action: `añadió el recuerdo "${f.title}"`,
+                timestamp: f.created_at,
+                timeAgo: 'recientemente' // Podríamos usar date-fns aquí
+              }));
           }
         }
       }

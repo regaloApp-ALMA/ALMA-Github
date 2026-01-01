@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, RefreshControl } from 'react-native';
 import { useMemoryStore } from '@/stores/memoryStore';
 import { useUserStore } from '@/stores/userStore';
 import { useTreeStore } from '@/stores/treeStore';
@@ -39,12 +39,22 @@ export default function HomeScreen() {
 
   const [showStreak, setShowStreak] = useState(false);
   const [currentIdeas, setCurrentIdeas] = useState<typeof MEMORY_PROMPTS>([]);
+  const [refreshing, setRefreshing] = useState(false);
 
   useEffect(() => {
     fetchHomeData();
     fetchMyTree(); // Asegurar que el árbol esté cargado
     refreshIdeas();
   }, []);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([fetchHomeData(), fetchMyTree()]);
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const refreshIdeas = () => {
     const shuffled = [...MEMORY_PROMPTS].sort(() => 0.5 - Math.random());
@@ -65,6 +75,9 @@ export default function HomeScreen() {
         style={[styles.container, isDarkMode && styles.containerDark]}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 100 }}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />
+        }
       >
         {/* HEADER */}
         <View style={[styles.header, isDarkMode && styles.headerDark]}>
@@ -120,11 +133,11 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* SECCIÓN 1: RECUERDOS DE HOY (DATOS REALES) */}
+        {/* SECCIÓN 1: RECUERDOS (DATOS REALES) */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Calendar size={20} color={colors.primary} />
-            <Text style={[styles.sectionTitle, isDarkMode && styles.sectionTitleDark]}>Recuerdos de hoy</Text>
+            <Text style={[styles.sectionTitle, isDarkMode && styles.sectionTitleDark]}>Recuerdos</Text>
           </View>
 
           {isLoading ? (

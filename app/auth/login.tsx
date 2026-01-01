@@ -26,16 +26,17 @@ export default function LoginScreen() {
 
     try {
       await login(email, password);
-      // El listener del store actualizará isAuthenticated, y el useEffect redirigirá automáticamente
-      // No redirigir aquí para evitar doble redirección
+      // Redirigir inmediatamente después del login exitoso
+      router.replace('/(tabs)');
     } catch (error: any) {
       let errorMessage = error.message || 'Credenciales incorrectas';
       
       if (error.message?.includes('Invalid login credentials') || 
           error.message?.includes('Invalid credentials')) {
         errorMessage = 'Email o contraseña incorrectos. Por favor, verifica tus credenciales.';
-      } else if (error.message?.includes('Email not confirmed')) {
-        errorMessage = 'Por favor, verifica tu email antes de iniciar sesión.';
+      } else if (error.message?.includes('Email not confirmed') || 
+                 error.message?.includes('email_not_confirmed')) {
+        errorMessage = 'Debes verificar tu email primero. Por favor, revisa tu correo electrónico.';
       }
       
       Alert.alert('Error', errorMessage);

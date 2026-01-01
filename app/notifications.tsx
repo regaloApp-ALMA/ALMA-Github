@@ -92,6 +92,13 @@ export default function NotificationsScreen() {
         }}
       />
       <ScrollView style={[styles.container, isDarkMode && styles.containerDark]}>
+        {/* Banner de aviso */}
+        <View style={[styles.banner, isDarkMode && styles.bannerDark]}>
+          <Text style={[styles.bannerText, isDarkMode && styles.textWhite]}>
+            🚧 Estamos trabajando en las notificaciones en tiempo real. ¡Pronto estarán disponibles!
+          </Text>
+        </View>
+        
         <View style={[styles.section, isDarkMode && styles.sectionDark]}>
           <Text style={[styles.sectionTitle, isDarkMode && styles.textWhite]}>Actividad</Text>
           {renderSwitch('gifts', 'Regalos recibidos', 'Nuevos regalos y cápsulas', Gift, colors.primary)}
@@ -115,6 +122,9 @@ export default function NotificationsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background, padding: 16 },
   containerDark: { backgroundColor: '#121212' },
+  banner: { backgroundColor: '#FFF3E0', borderRadius: 12, padding: 16, marginBottom: 16, borderLeftWidth: 4, borderLeftColor: colors.warning },
+  bannerDark: { backgroundColor: '#2A2A1E', borderLeftColor: colors.warning },
+  bannerText: { fontSize: 14, color: '#856404', lineHeight: 20 },
   section: { backgroundColor: colors.white, borderRadius: 12, padding: 16, marginBottom: 16 },
   sectionDark: { backgroundColor: '#1E1E1E' },
   sectionTitle: { fontSize: 16, fontWeight: 'bold', color: colors.text, marginBottom: 16 },
