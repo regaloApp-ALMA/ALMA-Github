@@ -17,6 +17,7 @@ export default function BranchDetailsScreen() {
   const isDarkMode = theme === 'dark';
   const [isUpdating, setIsUpdating] = useState(false);
   const [isLoadingBranch, setIsLoadingBranch] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const { deleteBranch } = useTreeStore();
 
   // Determinar qué árbol usar (propio o compartido)
@@ -120,11 +121,13 @@ export default function BranchDetailsScreen() {
 
   // --- LÓGICA DE ELIMINAR ---
   const handleDeleteBranch = () => {
+    if (isDeleting) return; // Prevenir múltiples clics
+    
     console.log('🗑️ [Branch Delete] Iniciando borrado de rama:', id);
     
     Alert.alert(
-      "Eliminar Rama",
-      "¿Estás seguro de eliminar esta Rama? Esta acción no se puede deshacer.",
+      "¿Eliminar Rama?",
+      "Esta acción no se puede deshacer y borrará todo el contenido asociado.",
       [
         { 
           text: "Cancelar", 
@@ -132,10 +135,12 @@ export default function BranchDetailsScreen() {
           onPress: () => console.log('❌ [Branch Delete] Cancelado por el usuario')
         },
         {
-          text: "Sí, eliminar",
+          text: "Eliminar",
           style: "destructive",
           onPress: async () => {
             console.log('✅ [Branch Delete] Usuario confirmó, ejecutando borrado...');
+            setIsDeleting(true);
+            
             try {
               await deleteBranch(id);
               console.log('✅ [Branch Delete] Rama borrada exitosamente');
@@ -143,10 +148,12 @@ export default function BranchDetailsScreen() {
               // Recargar árbol para sincronizar
               await fetchMyTree();
               
-              // Redirigir de vuelta
-              router.back();
+              // Redirigir al árbol principal
+              router.replace('/(tabs)/tree');
             } catch (e: any) {
               console.error('❌ [Branch Delete] Error:', e);
+              setIsDeleting(false);
+              
               const errorMessage = e.message || e.error?.message || "No se pudo eliminar la rama";
               Alert.alert("Error", errorMessage);
               
@@ -201,8 +208,16 @@ export default function BranchDetailsScreen() {
           headerStyle: { backgroundColor: branch.color || colors.primary },
           headerTintColor: colors.white,
           headerRight: () => finalIsOwner ? (
-            <TouchableOpacity onPress={handleDeleteBranch} style={{ marginRight: 10 }}>
-              <Trash2 size={20} color="white" />
+            <TouchableOpacity 
+              onPress={handleDeleteBranch} 
+              style={{ marginRight: 10, opacity: isDeleting ? 0.5 : 1 }}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <ActivityIndicator size="small" color="white" />
+              ) : (
+                <Trash2 size={20} color="white" />
+              )}
             </TouchableOpacity>
           ) : null
         }}

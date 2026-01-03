@@ -26,6 +26,7 @@ export default function FruitDetailsScreen() {
   const [isSharing, setIsSharing] = useState(false);
   const [showGalleryModal, setShowGalleryModal] = useState(false);
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     if (!tree) fetchMyTree();
@@ -33,11 +34,13 @@ export default function FruitDetailsScreen() {
 
   // --- LÓGICA DE ELIMINAR ---
   const handleDelete = () => {
+    if (isDeleting) return; // Prevenir múltiples clics
+    
     console.log('🗑️ [Fruit Delete] Iniciando borrado de recuerdo:', id);
     
     Alert.alert(
-      "Eliminar Recuerdo",
-      "¿Estás seguro de eliminar este Recuerdo? Esta acción no se puede deshacer.",
+      "¿Eliminar Recuerdo?",
+      "Esta acción no se puede deshacer y borrará todo el contenido asociado.",
       [
         { 
           text: "Cancelar", 
@@ -45,10 +48,12 @@ export default function FruitDetailsScreen() {
           onPress: () => console.log('❌ [Fruit Delete] Cancelado por el usuario')
         },
         {
-          text: "Sí, eliminar",
+          text: "Eliminar",
           style: "destructive",
           onPress: async () => {
             console.log('✅ [Fruit Delete] Usuario confirmó, ejecutando borrado...');
+            setIsDeleting(true);
+            
             try {
               await deleteFruit(id);
               console.log('✅ [Fruit Delete] Recuerdo borrado exitosamente');
@@ -56,10 +61,12 @@ export default function FruitDetailsScreen() {
               // Recargar árbol para sincronizar
               await fetchMyTree();
               
-              // Redirigir de vuelta
+              // Redirigir de vuelta a la rama
               router.back();
             } catch (e: any) {
               console.error('❌ [Fruit Delete] Error:', e);
+              setIsDeleting(false);
+              
               const errorMessage = e.message || e.error?.message || "No se pudo eliminar el recuerdo";
               Alert.alert("Error", errorMessage);
               
@@ -173,9 +180,17 @@ export default function FruitDetailsScreen() {
                   <Share2 size={20} color={colors.primary} />
                 </View>
               </TouchableOpacity>
-              <TouchableOpacity onPress={handleDelete} style={{ marginRight: 10, marginTop: 10 }}>
+              <TouchableOpacity 
+                onPress={handleDelete} 
+                style={{ marginRight: 10, marginTop: 10, opacity: isDeleting ? 0.5 : 1 }}
+                disabled={isDeleting}
+              >
                 <View style={styles.iconBg}>
-                  <Trash2 size={20} color={colors.error} />
+                  {isDeleting ? (
+                    <ActivityIndicator size="small" color={colors.error} />
+                  ) : (
+                    <Trash2 size={20} color={colors.error} />
+                  )}
                 </View>
               </TouchableOpacity>
             </View>

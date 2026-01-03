@@ -137,13 +137,25 @@ export default function LoginScreen() {
               <View style={styles.divider} />
             </View>
 
+            {/* Aviso sobre Google Auth temporalmente deshabilitado */}
+            <View style={styles.googleWarningContainer}>
+              <Text style={styles.googleWarningText}>
+                🚧 Estamos trabajando para habilitar el inicio con Google. Por favor, usa tu email y contraseña mientras tanto.
+              </Text>
+            </View>
+
             <TouchableOpacity
-              style={styles.googleButton}
-              onPress={handleGoogleLogin}
-              disabled={isLoading}
+              style={[styles.googleButton, styles.googleButtonDisabled]}
+              onPress={() => {
+                Alert.alert(
+                  'Google Auth temporalmente deshabilitado',
+                  'Estamos trabajando para habilitar el inicio con Google. Por favor, usa tu email y contraseña mientras tanto.'
+                );
+              }}
+              disabled={true}
             >
-              <Chrome size={20} color={colors.text} style={{ marginRight: 10 }} />
-              <Text style={styles.googleButtonText}>Google</Text>
+              <Chrome size={20} color={colors.textLight} style={{ marginRight: 10, opacity: 0.5 }} />
+              <Text style={[styles.googleButtonText, styles.googleButtonTextDisabled]}>Google</Text>
             </TouchableOpacity>
 
             <View style={styles.footerContainer}>
@@ -177,8 +189,12 @@ const styles = StyleSheet.create({
   orContainer: { flexDirection: 'row', alignItems: 'center', marginVertical: 30 },
   divider: { flex: 1, height: 1, backgroundColor: colors.border },
   orText: { color: colors.textLight, marginHorizontal: 16, fontSize: 14 },
+  googleWarningContainer: { marginBottom: 12, paddingHorizontal: 8 },
+  googleWarningText: { fontSize: 12, color: colors.textLight, textAlign: 'center', lineHeight: 18 },
   googleButton: { backgroundColor: colors.white, borderRadius: 12, paddingVertical: 16, alignItems: 'center', borderWidth: 1, borderColor: colors.border, flexDirection: 'row', justifyContent: 'center' },
+  googleButtonDisabled: { opacity: 0.5, backgroundColor: colors.background },
   googleButtonText: { color: colors.text, fontSize: 16, fontWeight: '600' },
+  googleButtonTextDisabled: { color: colors.textLight },
   footerContainer: { flexDirection: 'row', justifyContent: 'center', marginTop: 'auto', paddingTop: 40 },
   footerText: { color: colors.textLight, fontSize: 14 },
   registerLink: { color: colors.primary, fontSize: 14, fontWeight: 'bold', marginLeft: 5 },
