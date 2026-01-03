@@ -431,6 +431,8 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   },
 
   deleteBranch: async (branchId) => {
+    console.log('🗑️ [TreeStore] Iniciando borrado de rama:', branchId);
+    
     const state = get();
     const previousTree = state.tree;
     const previousSharedTree = state.sharedTree;
@@ -445,6 +447,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
           fruits: previousTree.fruits.filter(f => f.branchId !== branchId)
         }
       });
+      console.log('✅ [TreeStore] Estado local actualizado (optimista)');
     }
 
     // También actualizar sharedTree/viewingTree si están activos
@@ -469,20 +472,33 @@ export const useTreeStore = create<TreeState>((set, get) => ({
     }
 
     try {
-      const { error } = await supabase.from('branches').delete().eq('id', branchId);
+      console.log('🗑️ [TreeStore] Ejecutando DELETE en Supabase...');
+      const { data, error } = await supabase.from('branches').delete().eq('id', branchId).select();
+      
       if (error) {
+        console.error('❌ [TreeStore] Error de Supabase al borrar rama:', error);
+        console.error('❌ [TreeStore] Código de error:', error.code);
+        console.error('❌ [TreeStore] Mensaje:', error.message);
+        console.error('❌ [TreeStore] Detalles:', error.details);
+        
         // Si falla, restaurar todos los estados anteriores
         set({ 
           tree: previousTree,
           sharedTree: previousSharedTree,
           viewingTree: previousViewingTree
         });
-        throw error;
+        
+        // Crear un error más descriptivo
+        const enhancedError = new Error(error.message || 'No se pudo borrar la rama');
+        (enhancedError as any).code = error.code;
+        (enhancedError as any).error = error;
+        throw enhancedError;
       }
 
-      console.log('✅ Rama borrada exitosamente');
+      console.log('✅ [TreeStore] Rama borrada exitosamente en Supabase');
+      console.log('✅ [TreeStore] Datos borrados:', data);
     } catch (error: any) {
-      console.error('❌ Error deleting branch:', error);
+      console.error('❌ [TreeStore] Error completo al borrar rama:', error);
       // El estado ya se restauró arriba si falló
       set({ error: 'No se pudo borrar la rama.' });
       // Recargar árbol para sincronizar
@@ -605,6 +621,8 @@ export const useTreeStore = create<TreeState>((set, get) => ({
   },
 
   deleteFruit: async (fruitId: string) => {
+    console.log('🗑️ [TreeStore] Iniciando borrado de recuerdo:', fruitId);
+    
     const state = get();
     const previousTree = state.tree;
     const previousSharedTree = state.sharedTree;
@@ -618,6 +636,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
           fruits: previousTree.fruits.filter(f => f.id !== fruitId)
         }
       });
+      console.log('✅ [TreeStore] Estado local actualizado (optimista)');
     }
 
     // También actualizar sharedTree/viewingTree si están activos
@@ -641,6 +660,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
 
     try {
       // 🗑️ PASO 1: Obtener el fruto con sus media_urls antes de borrarlo
+      console.log('🗑️ [TreeStore] Obteniendo datos del recuerdo...');
       const { data: fruitData, error: fetchError } = await supabase
         .from('fruits')
         .select('media_urls')
@@ -648,8 +668,21 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         .single();
 
       if (fetchError) {
-        console.error('❌ Error obteniendo fruto para borrar:', fetchError);
-        throw fetchError;
+        console.error('❌ [TreeStore] Error obteniendo recuerdo para borrar:', fetchError);
+        console.error('❌ [TreeStore] Código:', fetchError.code);
+        console.error('❌ [TreeStore] Mensaje:', fetchError.message);
+        
+        // Restaurar estado
+        set({ 
+          tree: previousTree,
+          sharedTree: previousSharedTree,
+          viewingTree: previousViewingTree
+        });
+        
+        const enhancedError = new Error(fetchError.message || 'No se pudo obtener el recuerdo para borrar');
+        (enhancedError as any).code = fetchError.code;
+        (enhancedError as any).error = fetchError;
+        throw enhancedError;
       }
 
       // 🗑️ PASO 2: Si tiene URLs de medios, borrar los archivos del storage
@@ -707,21 +740,34 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       }
 
       // 🗑️ PASO 3: Borrar el registro de la tabla fruits
-      const { error } = await supabase.from('fruits').delete().eq('id', fruitId);
+      console.log('🗑️ [TreeStore] Ejecutando DELETE en Supabase...');
+      const { data, error } = await supabase.from('fruits').delete().eq('id', fruitId).select();
+      
       if (error) {
+        console.error('❌ [TreeStore] Error de Supabase al borrar recuerdo:', error);
+        console.error('❌ [TreeStore] Código de error:', error.code);
+        console.error('❌ [TreeStore] Mensaje:', error.message);
+        console.error('❌ [TreeStore] Detalles:', error.details);
+        
         // Si falla, restaurar todos los estados anteriores
         set({ 
           tree: previousTree,
           sharedTree: previousSharedTree,
           viewingTree: previousViewingTree
         });
-        throw error;
+        
+        // Crear un error más descriptivo
+        const enhancedError = new Error(error.message || 'No se pudo borrar el recuerdo');
+        (enhancedError as any).code = error.code;
+        (enhancedError as any).error = error;
+        throw enhancedError;
       }
 
-      console.log('✅ Fruto borrado exitosamente (registro + archivos)');
+      console.log('✅ [TreeStore] Recuerdo borrado exitosamente en Supabase');
+      console.log('✅ [TreeStore] Datos borrados:', data);
 
     } catch (error: any) {
-      console.error('❌ Error deleting fruit:', error);
+      console.error('❌ [TreeStore] Error completo al borrar recuerdo:', error);
       // El estado ya se restauró arriba si falló
       set({ error: 'No se pudo borrar el recuerdo.' });
       // Recargar árbol para sincronizar

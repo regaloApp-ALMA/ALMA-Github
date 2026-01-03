@@ -120,43 +120,48 @@ export default function BranchDetailsScreen() {
 
   // --- LÓGICA DE ELIMINAR ---
   const handleDeleteBranch = () => {
-    // PRIMERA ALERTA
+    console.log('🗑️ [Branch Delete] Iniciando borrado de rama:', id);
+    
     Alert.alert(
       "Eliminar Rama",
-      "¿Estás seguro? Se borrarán todos los recuerdos dentro de esta rama. Esta acción no se puede deshacer.",
+      "¿Estás seguro de eliminar esta Rama? Esta acción no se puede deshacer.",
       [
-        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Cancelar", 
+          style: "cancel",
+          onPress: () => console.log('❌ [Branch Delete] Cancelado por el usuario')
+        },
         {
           text: "Sí, eliminar",
           style: "destructive",
-          onPress: () => {
-            // SEGUNDA ALERTA (CONFIRMACIÓN FINAL)
-            setTimeout(() => {
-              Alert.alert(
-                "¿Estás absolutamente seguro?",
-                "Esta acción no se puede deshacer. Se borrarán todos los recuerdos de esta rama permanentemente.",
-                [
-                  { text: "No, espera", style: "cancel" },
-                  {
-                    text: "Sí, bórrala definitivamente",
-                    style: "destructive",
-                    onPress: async () => {
-                      try {
-                        await deleteBranch(id);
-                        // Recargar y salir
-                        await fetchMyTree();
-                        router.back();
-                      } catch (e: any) {
-                        Alert.alert("Error", e.message || "No se pudo eliminar la rama");
-                      }
-                    }
-                  }
-                ]
-              );
-            }, 200);
+          onPress: async () => {
+            console.log('✅ [Branch Delete] Usuario confirmó, ejecutando borrado...');
+            try {
+              await deleteBranch(id);
+              console.log('✅ [Branch Delete] Rama borrada exitosamente');
+              
+              // Recargar árbol para sincronizar
+              await fetchMyTree();
+              
+              // Redirigir de vuelta
+              router.back();
+            } catch (e: any) {
+              console.error('❌ [Branch Delete] Error:', e);
+              const errorMessage = e.message || e.error?.message || "No se pudo eliminar la rama";
+              Alert.alert("Error", errorMessage);
+              
+              // Si hay un error de RLS o permisos, mostrarlo claramente
+              if (e.code === '42501' || e.message?.includes('permission') || e.message?.includes('RLS')) {
+                Alert.alert(
+                  "Error de permisos", 
+                  "No tienes permisos para eliminar esta rama. Verifica las políticas de seguridad en Supabase."
+                );
+              }
+            }
           }
         }
-      ]
+      ],
+      { cancelable: true }
     );
   };
 

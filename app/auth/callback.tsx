@@ -98,6 +98,9 @@ export default function AuthCallbackScreen() {
         // IMPORTANTE: Actualizar el estado del store después de crear/obtener el perfil
         // Esto asegura que isAuthenticated se actualice correctamente
         await initialize();
+        
+        // Esperar un momento adicional para que el listener onAuthStateChange procese
+        await new Promise(resolve => setTimeout(resolve, 500));
 
         // Verificar si es usuario nuevo (creado hace menos de 10 segundos)
         const userCreatedAt = profile.createdAt ? new Date(profile.createdAt).getTime() : 0;
@@ -108,9 +111,13 @@ export default function AuthCallbackScreen() {
           setHasProcessed(true);
           setStatus('¡Autenticación exitosa!');
           
-          // Esperar un momento para que el estado se actualice
-          setTimeout(() => {
-            // Redirigir inmediatamente
+          // Verificar el estado de autenticación antes de redirigir
+          const { isAuthenticated: authStatus } = useUserStore.getState();
+          console.log('🔵 [Callback] Estado de autenticación:', authStatus);
+          
+          if (authStatus) {
+            // Redirigir inmediatamente si está autenticado
+            console.log('✅ [Callback] Redirigiendo a tabs...');
             router.replace('/(tabs)');
             
             // Mostrar mensaje después de un pequeño delay (no bloqueante)
@@ -123,8 +130,21 @@ export default function AuthCallbackScreen() {
                 isNewUser ? 'Cuenta creada' : 'Inicio de sesión exitoso',
                 message
               );
-            }, 300);
-          }, 500);
+            }, 500);
+          } else {
+            // Si aún no está autenticado, esperar un poco más
+            console.log('⏳ [Callback] Esperando actualización de estado...');
+            setTimeout(() => {
+              const { isAuthenticated: authStatusRetry } = useUserStore.getState();
+              if (authStatusRetry) {
+                router.replace('/(tabs)');
+              } else {
+                console.error('❌ [Callback] No se pudo autenticar después de esperar');
+                Alert.alert('Error', 'No se pudo completar la autenticación. Por favor, intenta de nuevo.');
+                router.replace('/auth/login');
+              }
+            }, 2000);
+          }
         }
       } catch (error: any) {
         console.error('❌ Error en callback de Google Auth:', error);

@@ -317,16 +317,15 @@ export const useUserStore = create<UserState>((set, get) => ({
     // Listener para cambios de autenticación con manejo de errores
     supabase.auth.onAuthStateChange(async (event: AuthChangeEvent, session: Session | null) => {
       try {
+        console.log('🔵 [Auth State Change] Event:', event, 'Session:', session ? 'exists' : 'null');
+        
         if (event === 'SIGNED_OUT' || !session) {
-          set({ user: null, session: null, isAuthenticated: false, error: null });
-        } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+          console.log('🔴 [Auth State Change] Usuario deslogueado');
+          set({ user: null, session: null, isAuthenticated: false, error: null, isLoading: false });
+        } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
           // Verificar que la sesión sea válida antes de usarla
           if (session?.user) {
-            // Obtener nombre de Google (puede venir como full_name, name, o del email)
-            const googleName = (session.user.user_metadata as any)?.full_name || 
-                              (session.user.user_metadata as any)?.name ||
-                              session.user.email?.split('@')[0] || 
-                              'Usuario';
+            console.log('🟢 [Auth State Change] Usuario autenticado, creando/obteniendo perfil...');
             
             // Obtener nombre de Google (puede venir como full_name, name, o del email)
             const googleName = (session.user.user_metadata as any)?.full_name || 
@@ -341,12 +340,26 @@ export const useUserStore = create<UserState>((set, get) => ({
               (session.user.user_metadata as any)?.avatar_url
             );
 
-            set({
-              session: profile ? session : null,
-              user: profile,
-              isAuthenticated: !!profile,
-              error: null,
-            });
+            if (profile) {
+              console.log('✅ [Auth State Change] Perfil obtenido, actualizando estado...');
+              set({
+                session: session,
+                user: profile,
+                isAuthenticated: true,
+                error: null,
+                isLoading: false,
+              });
+              console.log('✅ [Auth State Change] Estado actualizado, isAuthenticated = true');
+            } else {
+              console.error('❌ [Auth State Change] No se pudo obtener perfil');
+              set({ 
+                session: null, 
+                user: null, 
+                isAuthenticated: false, 
+                error: 'No se pudo crear el perfil',
+                isLoading: false 
+              });
+            }
           }
         }
       } catch (error: any) {
@@ -357,6 +370,8 @@ export const useUserStore = create<UserState>((set, get) => ({
             error?.message?.includes('Invalid Refresh Token') ||
             error?.message?.includes('refresh_token_not_found')) {
           await get().clearInvalidSession();
+        } else {
+          set({ error: error?.message || 'Error en autenticación', isLoading: false });
         }
       }
     });

@@ -24,7 +24,7 @@ export default function RootLayout() {
   const [loaded, error] = useFonts({
     ...FontAwesome.font,
   });
-  const { isAuthenticated, initialize, user } = useUserStore();
+  const { isAuthenticated, initialize, user, session } = useUserStore();
   const { fetchMyTree } = useTreeStore();
   const segments = useSegments();
   const router = useRouter();
@@ -44,21 +44,51 @@ export default function RootLayout() {
   // Cargar árbol cuando el usuario esté autenticado
   useEffect(() => {
     if (isAuthenticated && user) {
+      console.log('🌳 [Layout] Usuario autenticado, cargando árbol...');
       fetchMyTree();
     }
   }, [isAuthenticated, user]);
+  
+  // Efecto adicional para detectar cambios de sesión y redirigir
+  useEffect(() => {
+    if (!loaded) return;
+    
+    const { session } = useUserStore.getState();
+    if (session && !isAuthenticated) {
+      // Si hay sesión pero isAuthenticated es false, esperar un momento y verificar de nuevo
+      console.log('⏳ [Layout] Sesión detectada pero isAuthenticated es false, esperando...');
+      const timer = setTimeout(() => {
+        const { isAuthenticated: authCheck } = useUserStore.getState();
+        if (authCheck) {
+          console.log('✅ [Layout] isAuthenticated actualizado, redirigiendo...');
+          router.replace('/(tabs)');
+        }
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [loaded, session]);
 
   useEffect(() => {
     if (!loaded) return;
 
     const inAuthGroup = segments[0] === 'auth';
+    const inCallback = segments[1] === 'callback';
 
-    if (!isAuthenticated && !inAuthGroup) {
+    // Si está autenticado, redirigir incondicionalmente fuera de auth
+    if (isAuthenticated) {
+      if (inAuthGroup && !inCallback) {
+        // Si está en auth pero no en callback, redirigir a tabs
+        console.log('🟢 [Layout] Usuario autenticado, redirigiendo a tabs desde auth');
+        router.replace('/(tabs)');
+      } else if (!inAuthGroup && segments[0] !== '(tabs)') {
+        // Si está autenticado pero no está en tabs ni en auth, redirigir a tabs
+        console.log('🟢 [Layout] Usuario autenticado, redirigiendo a tabs');
+        router.replace('/(tabs)');
+      }
+    } else if (!isAuthenticated && !inAuthGroup) {
       // Si no está logueado y no está en login/registro, mandar a login
+      console.log('🔴 [Layout] Usuario no autenticado, redirigiendo a login');
       router.replace('/auth/login');
-    } else if (isAuthenticated && inAuthGroup) {
-      // Si ya está logueado y intenta ir a login, mandar a inicio
-      router.replace('/(tabs)');
     }
   }, [isAuthenticated, segments, loaded, router]);
 

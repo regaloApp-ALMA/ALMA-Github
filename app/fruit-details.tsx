@@ -31,43 +31,50 @@ export default function FruitDetailsScreen() {
     if (!tree) fetchMyTree();
   }, [tree]);
 
-  // --- LÓGICA DE DOBLE CONFIRMACIÓN ---
+  // --- LÓGICA DE ELIMINAR ---
   const handleDelete = () => {
-    // PRIMERA ALERTA
+    console.log('🗑️ [Fruit Delete] Iniciando borrado de recuerdo:', id);
+    
     Alert.alert(
       "Eliminar Recuerdo",
-      "¿Estás seguro de que quieres borrar este recuerdo?",
+      "¿Estás seguro de eliminar este Recuerdo? Esta acción no se puede deshacer.",
       [
-        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Cancelar", 
+          style: "cancel",
+          onPress: () => console.log('❌ [Fruit Delete] Cancelado por el usuario')
+        },
         {
           text: "Sí, eliminar",
           style: "destructive",
-          onPress: () => {
-            // SEGUNDA ALERTA (CONFIRMACIÓN FINAL)
-            setTimeout(() => { // Pequeño delay para que no se solapen en iOS
-              Alert.alert(
-                "¿Estás absolutamente seguro?",
-                "Esta acción no se puede deshacer y perderás este recuerdo para siempre.",
-                [
-                  { text: "No, espera", style: "cancel" },
-                  {
-                    text: "Sí, bórralo definitivamente",
-                    style: "destructive",
-                    onPress: async () => {
-                      try {
-                        await deleteFruit(id);
-                        router.back();
-                      } catch (e: any) {
-                        Alert.alert("Error", e.message);
-                      }
-                    }
-                  }
-                ]
-              );
-            }, 200);
+          onPress: async () => {
+            console.log('✅ [Fruit Delete] Usuario confirmó, ejecutando borrado...');
+            try {
+              await deleteFruit(id);
+              console.log('✅ [Fruit Delete] Recuerdo borrado exitosamente');
+              
+              // Recargar árbol para sincronizar
+              await fetchMyTree();
+              
+              // Redirigir de vuelta
+              router.back();
+            } catch (e: any) {
+              console.error('❌ [Fruit Delete] Error:', e);
+              const errorMessage = e.message || e.error?.message || "No se pudo eliminar el recuerdo";
+              Alert.alert("Error", errorMessage);
+              
+              // Si hay un error de RLS o permisos, mostrarlo claramente
+              if (e.code === '42501' || e.message?.includes('permission') || e.message?.includes('RLS')) {
+                Alert.alert(
+                  "Error de permisos", 
+                  "No tienes permisos para eliminar este recuerdo. Verifica las políticas de seguridad en Supabase."
+                );
+              }
+            }
           }
         }
-      ]
+      ],
+      { cancelable: true }
     );
   };
 
