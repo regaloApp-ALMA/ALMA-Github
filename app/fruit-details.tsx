@@ -35,43 +35,94 @@ export default function FruitDetailsScreen() {
   // --- LÓGICA DE ELIMINAR ---
   const handleDelete = () => {
     console.log("🗑️ BOTÓN PULSADO - handleDelete");
+    console.log("🗑️ ID de recuerdo:", id);
     
     if (isDeleting) {
       console.log('⚠️ Ya se está borrando, ignorando clic');
       return;
     }
     
-    Alert.alert(
-      "¿Eliminar Recuerdo?",
-      "Esta acción es irreversible y borrará todo el contenido asociado.",
-      [
-        { text: "Cancelar", style: "cancel" },
-        { 
-          text: "Eliminar", 
-          style: "destructive", 
-          onPress: async () => {
-            console.log('✅ Usuario confirmó borrado de recuerdo');
+    // Solución robusta: usar window.confirm en web como fallback
+    if (Platform.OS === 'web') {
+      const confirmed = window.confirm("¿Eliminar Recuerdo?\n\nEsta acción es irreversible y borrará todo el contenido asociado.");
+      if (confirmed) {
+        (async () => {
+          setIsDeleting(true);
+          try {
+            await deleteFruit(id);
+            console.log('✅ Recuerdo borrado exitosamente en DB');
+            await fetchMyTree();
+            router.dismissAll();
+            router.replace('/(tabs)/tree');
+          } catch (e: any) {
+            console.error('❌ Error borrando recuerdo:', e);
+            setIsDeleting(false);
+            window.alert("Error: " + (e.message || "No se pudo eliminar el recuerdo"));
+          }
+        })();
+      }
+      return;
+    }
+    
+    // Para móvil, usar Alert normal
+    try {
+      Alert.alert(
+        "¿Eliminar Recuerdo?",
+        "Esta acción es irreversible y borrará todo el contenido asociado.",
+        [
+          { 
+            text: "Cancelar", 
+            style: "cancel",
+            onPress: () => console.log('❌ Cancelado por usuario')
+          },
+          { 
+            text: "Eliminar", 
+            style: "destructive", 
+            onPress: async () => {
+              console.log('✅ Usuario confirmó borrado de recuerdo');
+              setIsDeleting(true);
+              
+              try {
+                await deleteFruit(id);
+                console.log('✅ Recuerdo borrado exitosamente en DB');
+                
+                // Recargar árbol
+                await fetchMyTree();
+                
+                // Navegación agresiva
+                router.dismissAll();
+                router.replace('/(tabs)/tree');
+              } catch (e: any) {
+                console.error('❌ Error borrando recuerdo:', e);
+                setIsDeleting(false);
+                Alert.alert("Error", e.message || "No se pudo eliminar el recuerdo");
+              }
+            }
+          }
+        ],
+        { cancelable: true }
+      );
+    } catch (error) {
+      console.error('❌ Error mostrando Alert:', error);
+      // Fallback para web
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        const confirmed = window.confirm("¿Eliminar Recuerdo?\n\nEsta acción es irreversible.");
+        if (confirmed) {
+          (async () => {
             setIsDeleting(true);
-            
             try {
               await deleteFruit(id);
-              console.log('✅ Recuerdo borrado exitosamente');
-              
-              // Recargar árbol
               await fetchMyTree();
-              
-              // Navegación agresiva
               router.dismissAll();
               router.replace('/(tabs)/tree');
             } catch (e: any) {
-              console.error('❌ Error borrando recuerdo:', e);
               setIsDeleting(false);
-              Alert.alert("Error", e.message || "No se pudo eliminar el recuerdo");
+              window.alert("Error: " + (e.message || "No se pudo eliminar el recuerdo"));
             }
-          }
+          })();
         }
-      ]
-    );
+      }
+    }
   };
 
   // --- FUNCIONALIDAD DE COMPARTIR FRUTO ---

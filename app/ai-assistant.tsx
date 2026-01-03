@@ -156,7 +156,17 @@ export default function AIAssistant() {
         } as any);
         
         console.log('✅ [AI] Rama creada exitosamente');
-        await fetchMyTree(); // Refrescar el árbol
+        await fetchMyTree(true); // Refrescar el árbol con refresh
+        
+        // Mostrar notificación de éxito
+        setTimeout(() => {
+          Alert.alert(
+            '✅ Rama Creada',
+            `Se ha añadido "${command.data.name.trim()}" a tu árbol.`,
+            [{ text: 'OK' }]
+          );
+        }, 300);
+        
         return null;
       }
 
@@ -200,10 +210,20 @@ export default function AIAssistant() {
 
         console.log('🔵 [AI] Datos del fruto validados:', fruitData);
 
-        await addFruit(fruitData as any);
+        const fruitId = await addFruit(fruitData as any);
         
-        console.log('✅ [AI] Fruto creado exitosamente');
-        await fetchMyTree(); // Refrescar el árbol
+        console.log('✅ [AI] Fruto creado exitosamente, ID:', fruitId);
+        await fetchMyTree(true); // Refrescar el árbol con refresh
+        
+        // Mostrar notificación de éxito
+        setTimeout(() => {
+          Alert.alert(
+            '✅ Recuerdo Guardado',
+            `"${command.data.title}" se ha añadido a tu árbol.`,
+            [{ text: 'OK' }]
+          );
+        }, 300);
+        
         return null;
       }
     } catch (e: any) {
@@ -432,18 +452,17 @@ export default function AIAssistant() {
                     
                     try {
                       const note = await executeAICommand(cmd);
+                      // Las notificaciones ya se muestran dentro de executeAICommand
+                      // Solo mostrar aquí si hay un mensaje de error o aviso
                       if (note) {
-                        Alert.alert('Aviso', note);
-                      } else {
-                        Alert.alert(
-                          '¡Guardado!',
-                          cmd.action === 'create_fruit'
-                            ? 'Tu recuerdo se ha añadido a tu árbol.'
-                            : 'Hemos creado una nueva rama en tu árbol.'
-                        );
+                        setTimeout(() => {
+                          Alert.alert('Aviso', note);
+                        }, 100);
                       }
                     } catch (error: any) {
-                      Alert.alert('Error', error.message || 'No se pudo guardar. Inténtalo de nuevo.');
+                      setTimeout(() => {
+                        Alert.alert('Error', error.message || 'No se pudo guardar. Inténtalo de nuevo.');
+                      }, 100);
                     }
                   }}
                 >

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert, Switch } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIndicator, Alert, Switch, Platform } from 'react-native';
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { useTreeStore } from '@/stores/treeStore';
 import colors from '@/constants/colors';
@@ -122,43 +122,95 @@ export default function BranchDetailsScreen() {
   // --- LÓGICA DE ELIMINAR ---
   const handleDeleteBranch = () => {
     console.log("🗑️ BOTÓN PULSADO - handleDeleteBranch");
+    console.log("🗑️ ID de rama:", id);
     
     if (isDeleting) {
       console.log('⚠️ Ya se está borrando, ignorando clic');
       return;
     }
     
-    Alert.alert(
-      "¿Eliminar Rama?",
-      "Esta acción es irreversible y borrará todo el contenido asociado.",
-      [
-        { text: "Cancelar", style: "cancel" },
-        { 
-          text: "Eliminar", 
-          style: "destructive", 
-          onPress: async () => {
-            console.log('✅ Usuario confirmó borrado de rama');
+    // Solución robusta: usar requestAnimationFrame para asegurar que se ejecute en el siguiente frame
+    if (Platform.OS === 'web') {
+      // En web, usar window.confirm como fallback si Alert no funciona
+      const confirmed = window.confirm("¿Eliminar Rama?\n\nEsta acción es irreversible y borrará todo el contenido asociado.");
+      if (confirmed) {
+        (async () => {
+          setIsDeleting(true);
+          try {
+            await deleteBranch(id);
+            console.log('✅ Rama borrada exitosamente en DB');
+            await fetchMyTree();
+            router.dismissAll();
+            router.replace('/(tabs)/tree');
+          } catch (e: any) {
+            console.error('❌ Error borrando rama:', e);
+            setIsDeleting(false);
+            window.alert("Error: " + (e.message || "No se pudo eliminar la rama"));
+          }
+        })();
+      }
+      return;
+    }
+    
+    // Para móvil, usar Alert normal
+    try {
+      Alert.alert(
+        "¿Eliminar Rama?",
+        "Esta acción es irreversible y borrará todo el contenido asociado.",
+        [
+          { 
+            text: "Cancelar", 
+            style: "cancel",
+            onPress: () => console.log('❌ Cancelado por usuario')
+          },
+          { 
+            text: "Eliminar", 
+            style: "destructive", 
+            onPress: async () => {
+              console.log('✅ Usuario confirmó borrado de rama');
+              setIsDeleting(true);
+              
+              try {
+                await deleteBranch(id);
+                console.log('✅ Rama borrada exitosamente en DB');
+                
+                // Recargar árbol
+                await fetchMyTree();
+                
+                // Navegación agresiva
+                router.dismissAll();
+                router.replace('/(tabs)/tree');
+              } catch (e: any) {
+                console.error('❌ Error borrando rama:', e);
+                setIsDeleting(false);
+                Alert.alert("Error", e.message || "No se pudo eliminar la rama");
+              }
+            }
+          }
+        ],
+        { cancelable: true }
+      );
+    } catch (error) {
+      console.error('❌ Error mostrando Alert:', error);
+      // Fallback para web
+      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+        const confirmed = window.confirm("¿Eliminar Rama?\n\nEsta acción es irreversible.");
+        if (confirmed) {
+          (async () => {
             setIsDeleting(true);
-            
             try {
               await deleteBranch(id);
-              console.log('✅ Rama borrada exitosamente');
-              
-              // Recargar árbol
               await fetchMyTree();
-              
-              // Navegación agresiva
               router.dismissAll();
               router.replace('/(tabs)/tree');
             } catch (e: any) {
-              console.error('❌ Error borrando rama:', e);
               setIsDeleting(false);
-              Alert.alert("Error", e.message || "No se pudo eliminar la rama");
+              window.alert("Error: " + (e.message || "No se pudo eliminar la rama"));
             }
-          }
+          })();
         }
-      ]
-    );
+      }
+    }
   };
 
   // --- LÓGICA DE PRIVACIDAD ---
