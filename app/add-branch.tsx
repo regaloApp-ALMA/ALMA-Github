@@ -68,11 +68,9 @@ export default function AddBranchScreen() {
       position: { x: 0, y: 0 }
     });
 
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.push('/(tabs)/tree');
-    }
+    // 🎯 Navegación automática: Volver al árbol y recargar
+    router.dismissAll();
+    router.replace('/(tabs)/tree');
   };
 
   return (

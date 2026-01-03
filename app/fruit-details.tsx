@@ -34,55 +34,69 @@ export default function FruitDetailsScreen() {
 
   // --- LÓGICA DE ELIMINAR ---
   const handleDelete = () => {
-    if (isDeleting) return; // Prevenir múltiples clics
+    console.log('🔴 [DEBUG] Botón borrar presionado - handleDelete llamado');
+    console.log('🔴 [DEBUG] ID de recuerdo:', id);
+    console.log('🔴 [DEBUG] isDeleting:', isDeleting);
+    
+    if (isDeleting) {
+      console.log('⚠️ [DEBUG] Ya se está borrando, ignorando clic');
+      return; // Prevenir múltiples clics
+    }
     
     console.log('🗑️ [Fruit Delete] Iniciando borrado de recuerdo:', id);
     
-    Alert.alert(
-      "¿Eliminar Recuerdo?",
-      "Esta acción no se puede deshacer y borrará todo el contenido asociado.",
-      [
-        { 
-          text: "Cancelar", 
-          style: "cancel",
-          onPress: () => console.log('❌ [Fruit Delete] Cancelado por el usuario')
-        },
-        {
-          text: "Eliminar",
-          style: "destructive",
-          onPress: async () => {
-            console.log('✅ [Fruit Delete] Usuario confirmó, ejecutando borrado...');
-            setIsDeleting(true);
-            
-            try {
-              await deleteFruit(id);
-              console.log('✅ [Fruit Delete] Recuerdo borrado exitosamente');
+    // Asegurar que Alert se ejecute en el hilo principal
+    setTimeout(() => {
+      Alert.alert(
+        "¿Eliminar Recuerdo?",
+        "Esta acción no se puede deshacer y borrará todo el contenido asociado.",
+        [
+          { 
+            text: "Cancelar", 
+            style: "cancel",
+            onPress: () => {
+              console.log('❌ [Fruit Delete] Cancelado por el usuario');
+            }
+          },
+          {
+            text: "Eliminar",
+            style: "destructive",
+            onPress: async () => {
+              console.log('✅ [Fruit Delete] Usuario confirmó, ejecutando borrado...');
+              setIsDeleting(true);
               
-              // Recargar árbol para sincronizar
-              await fetchMyTree();
-              
-              // Redirigir de vuelta a la rama
-              router.back();
-            } catch (e: any) {
-              console.error('❌ [Fruit Delete] Error:', e);
-              setIsDeleting(false);
-              
-              const errorMessage = e.message || e.error?.message || "No se pudo eliminar el recuerdo";
-              Alert.alert("Error", errorMessage);
-              
-              // Si hay un error de RLS o permisos, mostrarlo claramente
-              if (e.code === '42501' || e.message?.includes('permission') || e.message?.includes('RLS')) {
-                Alert.alert(
-                  "Error de permisos", 
-                  "No tienes permisos para eliminar este recuerdo. Verifica las políticas de seguridad en Supabase."
-                );
+              try {
+                await deleteFruit(id);
+                console.log('✅ [Fruit Delete] Recuerdo borrado exitosamente');
+                
+                // Recargar árbol para sincronizar
+                await fetchMyTree();
+                
+                // Redirigir de vuelta a la rama
+                router.back();
+              } catch (e: any) {
+                console.error('❌ [Fruit Delete] Error completo:', e);
+                console.error('❌ [Fruit Delete] Error message:', e.message);
+                console.error('❌ [Fruit Delete] Error code:', e.code);
+                setIsDeleting(false);
+                
+                const errorMessage = e.message || e.error?.message || "No se pudo eliminar el recuerdo";
+                Alert.alert("Error", errorMessage);
+                
+                // Si hay un error de RLS o permisos, mostrarlo claramente
+                if (e.code === '42501' || e.message?.includes('permission') || e.message?.includes('RLS')) {
+                  Alert.alert(
+                    "Error de permisos", 
+                    "No tienes permisos para eliminar este recuerdo. Verifica las políticas de seguridad en Supabase."
+                  );
+                }
               }
             }
           }
-        }
-      ],
-      { cancelable: true }
-    );
+        ],
+        { cancelable: true }
+      );
+    }, 0);
   };
 
   // --- FUNCIONALIDAD DE COMPARTIR FRUTO ---
@@ -182,8 +196,15 @@ export default function FruitDetailsScreen() {
               </TouchableOpacity>
               <TouchableOpacity 
                 onPress={handleDelete} 
-                style={{ marginRight: 10, marginTop: 10, opacity: isDeleting ? 0.5 : 1 }}
+                style={{ 
+                  marginRight: 10, 
+                  marginTop: 10, 
+                  opacity: isDeleting ? 0.5 : 1,
+                  zIndex: 1000
+                }}
                 disabled={isDeleting}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                activeOpacity={0.7}
               >
                 <View style={styles.iconBg}>
                   {isDeleting ? (

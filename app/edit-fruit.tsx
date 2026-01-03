@@ -25,6 +25,8 @@ export default function EditFruitScreen() {
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Nota: isUploading ahora solo se usa durante handleSave, no en handlePickMedia
 
   useEffect(() => {
     if (!tree) {
@@ -57,20 +59,12 @@ export default function EditFruitScreen() {
 
       const result = await ImagePicker.launchImageLibraryAsync(pickerOptions);
 
-      if (!result.canceled && user?.id && result.assets) {
-        setIsUploading(true);
-        try {
-          const uploadPromises = result.assets.map(asset => 
-            uploadMedia(asset.uri, user.id, 'memories')
-          );
-          const uploadedUrls = await Promise.all(uploadPromises);
-          const validUrls = uploadedUrls.filter(url => url !== null) as string[];
-          setMediaUrls(prev => [...prev, ...validUrls]);
-        } catch (error) {
-          Alert.alert('Error', 'No se pudieron subir algunos archivos');
-        } finally {
-          setIsUploading(false);
-        }
+      if (!result.canceled && result.assets) {
+        // 📸 REFACTOR: Solo guardar URIs locales, NO subir todavía
+        // Las URIs locales son del tipo: file:///path/to/image.jpg
+        const localUris = result.assets.map(asset => asset.uri);
+        setMediaUrls(prev => [...prev, ...localUris]);
+        console.log('📸 Media seleccionado (URIs locales guardadas):', localUris.length);
       }
     } catch (error: any) {
       console.error('Error picking media:', error);
@@ -97,13 +91,53 @@ export default function EditFruitScreen() {
       return;
     }
 
+    if (!user?.id) {
+      Alert.alert('Error', 'No se pudo identificar al usuario.');
+      return;
+    }
+
     setIsSaving(true);
     try {
+      // 📸 REFACTOR: Subir fotos/videos SOLO al guardar
+      let finalMediaUrls: string[] = [];
+      
+      if (mediaUrls.length > 0) {
+        setIsUploading(true);
+        try {
+          // Separar URLs locales (file://) de las remotas (https://)
+          const localUris = mediaUrls.filter(uri => uri.startsWith('file://') || uri.startsWith('content://'));
+          const remoteUrls = mediaUrls.filter(uri => !uri.startsWith('file://') && !uri.startsWith('content://'));
+          
+          // Subir solo las que son locales
+          if (localUris.length > 0) {
+            console.log('📤 Subiendo', localUris.length, 'archivos nuevos al storage...');
+            const uploadPromises = localUris.map(uri => 
+              uploadMedia(uri, user.id, 'memories')
+            );
+            const uploadResults = await Promise.all(uploadPromises);
+            const validUploaded = uploadResults.filter(url => url !== null) as string[];
+            finalMediaUrls = [...remoteUrls, ...validUploaded];
+            console.log('✅', validUploaded.length, 'archivos nuevos subidos exitosamente');
+          } else {
+            // Solo hay URLs remotas, mantenerlas todas
+            finalMediaUrls = remoteUrls;
+          }
+        } catch (uploadError: any) {
+          console.error('❌ Error subiendo archivos:', uploadError);
+          Alert.alert('Error', 'No se pudieron subir algunos archivos. ' + (uploadError.message || ''));
+          setIsUploading(false);
+          setIsSaving(false);
+          return;
+        } finally {
+          setIsUploading(false);
+        }
+      }
+
       await updateFruit(id, {
         title: title.trim(),
         description: description.trim(),
         branchId: selectedBranch,
-        mediaUrls: mediaUrls,
+        mediaUrls: finalMediaUrls,
         isPublic: isPublic,
       });
 
@@ -239,21 +273,15 @@ export default function EditFruitScreen() {
           <TouchableOpacity 
             style={[styles.uploadBox, isDarkMode && styles.uploadBoxDark]} 
             onPress={handlePickMedia}
-            disabled={isUploading}
+            disabled={isSaving}
           >
-            {isUploading ? (
-              <ActivityIndicator color={colors.primary} />
-            ) : (
-              <>
-                <ImageIcon size={32} color={colors.gray} />
-                <Text style={[styles.uploadText, isDarkMode && styles.textLight]}>
-                  Toca para añadir más fotos/videos
-                </Text>
-                <Text style={[styles.uploadHint, isDarkMode && styles.textLight]}>
-                  Puedes seleccionar múltiples archivos
-                </Text>
-              </>
-            )}
+            <ImageIcon size={32} color={colors.gray} />
+            <Text style={[styles.uploadText, isDarkMode && styles.textLight]}>
+              Toca para añadir más fotos/videos
+            </Text>
+            <Text style={[styles.uploadHint, isDarkMode && styles.textLight]}>
+              Puedes seleccionar múltiples archivos
+            </Text>
           </TouchableOpacity>
         </View>
 
