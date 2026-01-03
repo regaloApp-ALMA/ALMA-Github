@@ -48,47 +48,67 @@ export default function RootLayout() {
       fetchMyTree();
     }
   }, [isAuthenticated, user]);
-  
-  // Efecto adicional para detectar cambios de sesión y redirigir
+
+  // 🛡️ PROTECCIÓN DE RUTAS: Solo redirigir cuando sea necesario y cuando no esté cargando
   useEffect(() => {
     if (!loaded) return;
     
-    const { session } = useUserStore.getState();
-    if (session && !isAuthenticated) {
-      // Si hay sesión pero isAuthenticated es false, esperar un momento y verificar de nuevo
-      console.log('⏳ [Layout] Sesión detectada pero isAuthenticated es false, esperando...');
-      const timer = setTimeout(() => {
-        const { isAuthenticated: authCheck } = useUserStore.getState();
-        if (authCheck) {
-          console.log('✅ [Layout] isAuthenticated actualizado, redirigiendo...');
-          router.replace('/(tabs)');
-        }
-      }, 1000);
-      return () => clearTimeout(timer);
+    const { isLoading } = useUserStore.getState();
+    // ⚠️ CRÍTICO: No redirigir mientras está cargando la sesión
+    if (isLoading) {
+      console.log('⏳ [Layout] Cargando sesión, esperando...');
+      return;
     }
-  }, [loaded, session]);
-
-  useEffect(() => {
-    if (!loaded) return;
 
     const inAuthGroup = segments[0] === 'auth';
     const inCallback = segments[1] === 'callback';
+    const inTabs = segments[0] === '(tabs)';
+    
+    // Lista de rutas internas válidas que NO deben ser redirigidas
+    const validInternalRoutes = [
+      'branch-details',
+      'fruit-details',
+      'add-branch',
+      'add-branch-options',
+      'add-branch-ai',
+      'add-fruit',
+      'add-memory-options',
+      'add-memory-ai',
+      'add-memory-manual',
+      'edit-fruit',
+      'root-details',
+      'share-tree',
+      'shared-tree',
+      'create-gift',
+      'digital-legacy',
+      'time-capsule',
+      'family',
+      'notifications',
+      'profile-settings',
+      'pricing',
+      'privacy',
+      'storage',
+      'ai-assistant',
+      'modal',
+    ];
+    
+    const isInternalRoute = validInternalRoutes.includes(segments[0] || '') || 
+                           validInternalRoutes.some(route => segments.some(s => s === route));
 
-    // Si está autenticado, redirigir incondicionalmente fuera de auth
     if (isAuthenticated) {
+      // Si está autenticado y está en auth (excepto callback), redirigir a tabs
       if (inAuthGroup && !inCallback) {
-        // Si está en auth pero no en callback, redirigir a tabs
-        console.log('🟢 [Layout] Usuario autenticado, redirigiendo a tabs desde auth');
-        router.replace('/(tabs)');
-      } else if (!inAuthGroup && segments[0] !== '(tabs)') {
-        // Si está autenticado pero no está en tabs ni en auth, redirigir a tabs
-        console.log('🟢 [Layout] Usuario autenticado, redirigiendo a tabs');
+        console.log('🟢 [Layout] Usuario autenticado en auth, redirigiendo a tabs');
         router.replace('/(tabs)');
       }
-    } else if (!isAuthenticated && !inAuthGroup) {
-      // Si no está logueado y no está en login/registro, mandar a login
-      console.log('🔴 [Layout] Usuario no autenticado, redirigiendo a login');
-      router.replace('/auth/login');
+      // Si está autenticado, permitir navegación libre dentro de la app
+      // NO redirigir si está en tabs o en rutas internas válidas
+    } else if (!isAuthenticated) {
+      // Si NO está autenticado y NO está en auth, redirigir a login
+      if (!inAuthGroup) {
+        console.log('🔴 [Layout] Usuario no autenticado, redirigiendo a login');
+        router.replace('/auth/login');
+      }
     }
   }, [isAuthenticated, segments, loaded, router]);
 

@@ -52,11 +52,15 @@ export default function LoginScreen() {
 
   const handleGoogleLogin = async () => {
     try {
+      console.log('🔵 [Login] Iniciando login con Google...');
       await loginWithGoogle();
       // El listener del store manejará la actualización del estado
       // y el useEffect redirigirá cuando isAuthenticated cambie
+      // No redirigir aquí manualmente, dejar que el callback y el listener lo manejen
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'No se pudo iniciar sesión con Google');
+      console.error('❌ [Login] Error en Google login:', error);
+      const errorMessage = error.message || 'No se pudo iniciar sesión con Google';
+      Alert.alert('Error de autenticación', errorMessage);
     }
   };
 

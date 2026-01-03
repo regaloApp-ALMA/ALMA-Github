@@ -260,24 +260,29 @@ export const useUserStore = create<UserState>((set, get) => ({
   },
 
   initialize: async () => {
+    set({ isLoading: true });
     try {
+      console.log('🔄 [UserStore] Inicializando sesión...');
+      
       // Intentar obtener la sesión actual
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
       // Si hay error de refresh token inválido, limpiar sesión
       if (sessionError) {
-        console.warn('⚠️ Error obteniendo sesión:', sessionError.message);
+        console.warn('⚠️ [UserStore] Error obteniendo sesión:', sessionError.message);
         
         // Si es error de refresh token inválido, limpiar todo
         if (sessionError.message?.includes('Refresh Token') || 
             sessionError.message?.includes('Invalid Refresh Token') ||
             sessionError.message?.includes('refresh_token_not_found')) {
           await get().clearInvalidSession();
+          set({ isLoading: false });
           return;
         }
       }
 
-      if (session) {
+      if (session && session.user) {
+        console.log('✅ [UserStore] Sesión encontrada, verificando perfil...');
         // Verificar que la sesión sea válida
         try {
           const profile = await get().ensureProfile(
@@ -287,22 +292,44 @@ export const useUserStore = create<UserState>((set, get) => ({
             (session.user.user_metadata as any)?.avatar_url
           );
 
-          set({
-            session: profile ? session : null,
-            user: profile,
-            isAuthenticated: !!profile,
-            error: null,
-          });
+          if (profile) {
+            console.log('✅ [UserStore] Perfil obtenido, usuario autenticado');
+            set({
+              session: session,
+              user: profile,
+              isAuthenticated: true,
+              error: null,
+              isLoading: false,
+            });
+          } else {
+            console.warn('⚠️ [UserStore] No se pudo obtener perfil, limpiando sesión');
+            await get().clearInvalidSession();
+            set({ isLoading: false });
+          }
         } catch (profileError: any) {
-          console.error('❌ Error obteniendo perfil:', profileError);
-          // Si falla, limpiar sesión
-          await get().clearInvalidSession();
+          console.error('❌ [UserStore] Error obteniendo perfil:', profileError);
+          // ⚠️ NO limpiar sesión automáticamente si hay un error temporal
+          // Solo limpiar si es un error crítico
+          if (profileError?.code === '42501' || profileError?.message?.includes('permission denied')) {
+            console.error('❌ [UserStore] Error de permisos, limpiando sesión');
+            await get().clearInvalidSession();
+          } else {
+            // Error temporal, mantener sesión pero marcar como no autenticado
+            set({ 
+              session: session, 
+              user: null, 
+              isAuthenticated: false, 
+              error: profileError?.message || 'Error obteniendo perfil',
+              isLoading: false 
+            });
+          }
         }
       } else {
-        set({ session: null, user: null, isAuthenticated: false, error: null });
+        console.log('ℹ️ [UserStore] No hay sesión activa');
+        set({ session: null, user: null, isAuthenticated: false, error: null, isLoading: false });
       }
     } catch (error: any) {
-      console.error('❌ Error inicializando:', error);
+      console.error('❌ [UserStore] Error inicializando:', error);
       
       // Si es error de refresh token, limpiar sesión
       if (error?.message?.includes('Refresh Token') || 
@@ -310,7 +337,10 @@ export const useUserStore = create<UserState>((set, get) => ({
           error?.message?.includes('refresh_token_not_found')) {
         await get().clearInvalidSession();
       } else {
-        set({ error: error?.message || 'Error al inicializar sesión' });
+        set({ 
+          error: error?.message || 'Error al inicializar sesión', 
+          isLoading: false 
+        });
       }
     }
 
@@ -501,15 +531,16 @@ export const useUserStore = create<UserState>((set, get) => ({
   loginWithGoogle: async () => {
     set({ isLoading: true, error: null });
     try {
-      // Usar el scheme correcto dinámicamente
-      // En desarrollo: usar 'exp' para Expo Go, en producción usar el scheme de la app
+      // 🎯 Determinar el scheme correcto según el entorno
       const redirectUrl = makeRedirectUri({
         path: '/auth/callback',
-        // No especificar scheme explícitamente, dejar que makeRedirectUri lo determine automáticamente
+        scheme: 'alma', // Scheme personalizado para producción
+        // En desarrollo, makeRedirectUri usará 'exp' automáticamente
       });
 
       console.log('🔵 [Google Auth] Redirect URL generada:', redirectUrl);
-      console.log('🔵 [Google Auth] Verifica que esta URL esté configurada en Supabase Dashboard > Authentication > URL Configuration > Redirect URLs');
+      console.log('🔵 [Google Auth] IMPORTANTE: Asegúrate de que esta URL esté en Supabase Dashboard > Authentication > URL Configuration > Redirect URLs');
+      console.log('🔵 [Google Auth] Para producción, añade también: alma://auth/callback');
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -520,64 +551,65 @@ export const useUserStore = create<UserState>((set, get) => ({
       });
 
       if (error) {
-        console.error('❌ [Google Auth] Error:', error);
-        // Mejorar mensajes de error
+        console.error('❌ [Google Auth] Error de Supabase:', error);
         let errorMessage = error.message || 'Error al iniciar sesión con Google';
         if (error.message?.includes('network') || error.message?.includes('Network')) {
           errorMessage = 'Error de conexión. Por favor, verifica tu conexión a internet e inténtalo de nuevo.';
         } else if (error.message?.includes('redirect')) {
-          errorMessage = 'Error en la configuración de redirección. Por favor, contacta con soporte.';
+          errorMessage = 'Error en la configuración de redirección. Verifica que la URL de redirección esté configurada en Supabase.';
         }
         set({ error: errorMessage, isLoading: false });
         throw new Error(errorMessage);
       }
 
-      if (data?.url) {
-        // Abrir en el navegador y esperar la redirección
-        try {
-          const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
-          
-          console.log('🔵 [Google Auth] Result:', result);
+      if (!data?.url) {
+        const errorMsg = 'No se recibió URL de autenticación de Google.';
+        console.error('❌ [Google Auth]', errorMsg);
+        set({ error: errorMsg, isLoading: false });
+        throw new Error(errorMsg);
+      }
 
-          // Si la sesión se completó, el listener onAuthStateChange actualizará el estado
-          if (result.type === 'success' && result.url) {
-            // Parsear la URL para extraer tokens si es necesario
-            const url = new URL(result.url);
-            const accessToken = url.searchParams.get('access_token');
-            const refreshToken = url.searchParams.get('refresh_token');
-            
-            if (accessToken || refreshToken) {
-              // La sesión debería actualizarse automáticamente por el listener
-              console.log('✅ [Google Auth] Sesión iniciada');
-            }
-          } else if (result.type === 'cancel') {
-            // Usuario canceló el proceso
-            console.log('⚠️ [Google Auth] Usuario canceló');
-            set({ isLoading: false });
-            return;
-          }
-        } catch (browserError: any) {
-          console.error('❌ [Google Auth] Error abriendo navegador:', browserError);
-          let errorMessage = 'No se pudo abrir el navegador para autenticación.';
-          if (browserError.message?.includes('network') || browserError.message?.includes('Network')) {
-            errorMessage = 'Error de conexión. Por favor, verifica tu conexión a internet.';
-          }
-          set({ error: errorMessage, isLoading: false });
-          throw new Error(errorMessage);
+      // Abrir en el navegador y esperar la redirección
+      try {
+        console.log('🔵 [Google Auth] Abriendo navegador...');
+        const result = await WebBrowser.openAuthSessionAsync(data.url, redirectUrl);
+        
+        console.log('🔵 [Google Auth] Resultado del navegador:', result.type);
+
+        if (result.type === 'success' && result.url) {
+          console.log('✅ [Google Auth] Redirección exitosa, procesando...');
+          // El listener onAuthStateChange actualizará el estado automáticamente
+          // No desactivar isLoading aquí, el listener lo hará cuando actualice el estado
+        } else if (result.type === 'cancel') {
+          console.log('⚠️ [Google Auth] Usuario canceló la autenticación');
+          set({ isLoading: false, error: null });
+          return;
+        } else if (result.type === 'dismiss') {
+          console.log('⚠️ [Google Auth] Navegador cerrado');
+          set({ isLoading: false, error: null });
+          return;
+        } else {
+          console.warn('⚠️ [Google Auth] Resultado inesperado:', result);
+          set({ isLoading: false });
         }
-      } else {
-        throw new Error('No se recibió URL de autenticación de Google.');
+      } catch (browserError: any) {
+        console.error('❌ [Google Auth] Error abriendo navegador:', browserError);
+        let errorMessage = 'No se pudo abrir el navegador para autenticación.';
+        if (browserError.message?.includes('network') || browserError.message?.includes('Network')) {
+          errorMessage = 'Error de conexión. Por favor, verifica tu conexión a internet.';
+        } else if (browserError.message?.includes('scheme')) {
+          errorMessage = 'Error de configuración. Verifica que el scheme de la app esté correctamente configurado.';
+        }
+        set({ error: errorMessage, isLoading: false });
+        throw new Error(errorMessage);
       }
     } catch (error: any) {
       console.error('❌ [Google Auth] Error completo:', error);
-      // Si el error no tiene mensaje personalizado, usar el genérico
-      if (!error.message || error.message === 'Error al iniciar sesión con Google') {
-        set({ error: error.message || 'Error al iniciar sesión con Google. Por favor, inténtalo de nuevo.', isLoading: false });
-      }
+      set({ 
+        error: error.message || 'Error al iniciar sesión con Google. Por favor, inténtalo de nuevo.', 
+        isLoading: false 
+      });
       throw error;
-    } finally {
-      // Solo desactivar loading si no hubo éxito (el listener lo manejará en caso de éxito)
-      // Pero si hubo un error, ya lo desactivamos arriba
     }
   }
 }));
