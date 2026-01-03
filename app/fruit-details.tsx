@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, ActivityIn
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { useTreeStore } from '@/stores/treeStore';
 import { useGiftStore } from '@/stores/giftStore';
+import { useMemoryStore } from '@/stores/memoryStore';
 import colors from '@/constants/colors';
 import { MapPin, Trash2, Share2, Send, Images, X, Play, Edit3 } from 'lucide-react-native';
 import { useThemeStore } from '@/stores/themeStore';
@@ -18,6 +19,7 @@ export default function FruitDetailsScreen() {
   const { tree, fetchMyTree, deleteFruit } = useTreeStore();
   const { createGift } = useGiftStore();
   const { theme } = useThemeStore();
+  const { fetchHomeData } = useMemoryStore();
   const router = useRouter();
   const isDarkMode = theme === 'dark';
 
@@ -48,13 +50,19 @@ export default function FruitDetailsScreen() {
       if (confirmed) {
         (async () => {
           setIsDeleting(true);
-          try {
-            await deleteFruit(id);
-            console.log('✅ Recuerdo borrado exitosamente en DB');
-            await fetchMyTree();
-            router.dismissAll();
-            router.replace('/(tabs)/tree');
-          } catch (e: any) {
+            try {
+              await deleteFruit(id);
+              console.log('✅ Recuerdo borrado exitosamente en DB');
+              
+              // Actualizar tanto el árbol como los recuerdos de la pantalla de inicio
+              await Promise.all([
+                fetchMyTree(),
+                fetchHomeData() // Actualizar el apartado de Recuerdos
+              ]);
+              
+              router.dismissAll();
+              router.replace('/(tabs)/tree');
+            } catch (e: any) {
             console.error('❌ Error borrando recuerdo:', e);
             setIsDeleting(false);
             window.alert("Error: " + (e.message || "No se pudo eliminar el recuerdo"));
@@ -86,8 +94,11 @@ export default function FruitDetailsScreen() {
                 await deleteFruit(id);
                 console.log('✅ Recuerdo borrado exitosamente en DB');
                 
-                // Recargar árbol
-                await fetchMyTree();
+                // Actualizar tanto el árbol como los recuerdos de la pantalla de inicio
+                await Promise.all([
+                  fetchMyTree(),
+                  fetchHomeData() // Actualizar el apartado de Recuerdos
+                ]);
                 
                 // Navegación agresiva
                 router.dismissAll();
@@ -112,7 +123,13 @@ export default function FruitDetailsScreen() {
             setIsDeleting(true);
             try {
               await deleteFruit(id);
-              await fetchMyTree();
+              
+              // Actualizar tanto el árbol como los recuerdos de la pantalla de inicio
+              await Promise.all([
+                fetchMyTree(),
+                fetchHomeData() // Actualizar el apartado de Recuerdos
+              ]);
+              
               router.dismissAll();
               router.replace('/(tabs)/tree');
             } catch (e: any) {

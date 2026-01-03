@@ -8,6 +8,7 @@ import { useTreeStore } from '@/stores/treeStore';
 import { useUserStore } from '@/stores/userStore';
 import { supabase } from '@/lib/supabase';
 import categories from '@/constants/categories';
+import SuccessNotification from '@/components/SuccessNotification';
 
 type Message = { id: string; role: 'user' | 'assistant' | 'system'; content: string; };
 
@@ -20,6 +21,8 @@ export default function AIAssistant() {
   const [messages, setMessages] = useState<Message[]>([{ id: '1', role: 'assistant', content: 'Hola. Soy ALMA, estoy aquí para escuchar tus historias y ayudarte a guardarlas. ¿Qué recuerdo te gustaría conservar hoy?' }]);
   const [isLoading, setIsLoading] = useState(false);
   const [pendingCommand, setPendingCommand] = useState<PendingCommand | null>(null);
+  const [showSuccessNotification, setShowSuccessNotification] = useState(false);
+  const [successMessage, setSuccessMessage] = useState('');
   const scrollViewRef = useRef<ScrollView>(null);
   const { theme } = useThemeStore();
   const { user } = useUserStore();
@@ -158,14 +161,9 @@ export default function AIAssistant() {
         console.log('✅ [AI] Rama creada exitosamente');
         await fetchMyTree(true); // Refrescar el árbol con refresh
         
-        // Mostrar notificación de éxito
-        setTimeout(() => {
-          Alert.alert(
-            '✅ Rama Creada',
-            `Se ha añadido "${command.data.name.trim()}" a tu árbol.`,
-            [{ text: 'OK' }]
-          );
-        }, 300);
+        // Mostrar notificación visual de éxito
+        setSuccessMessage('Rama guardada correctamente');
+        setShowSuccessNotification(true);
         
         return null;
       }
@@ -215,14 +213,9 @@ export default function AIAssistant() {
         console.log('✅ [AI] Fruto creado exitosamente, ID:', fruitId);
         await fetchMyTree(true); // Refrescar el árbol con refresh
         
-        // Mostrar notificación de éxito
-        setTimeout(() => {
-          Alert.alert(
-            '✅ Recuerdo Guardado',
-            `"${command.data.title}" se ha añadido a tu árbol.`,
-            [{ text: 'OK' }]
-          );
-        }, 300);
+        // Mostrar notificación visual de éxito
+        setSuccessMessage('Recuerdo guardado correctamente');
+        setShowSuccessNotification(true);
         
         return null;
       }
@@ -474,6 +467,14 @@ export default function AIAssistant() {
 
           {isLoading && <ActivityIndicator color={colors.primary} style={{ margin: 10 }} />}
         </ScrollView>
+
+        {/* Notificación de éxito */}
+        <SuccessNotification
+          visible={showSuccessNotification}
+          message={successMessage}
+          onClose={() => setShowSuccessNotification(false)}
+          duration={2500}
+        />
 
         <View style={[styles.inputContainer, isDarkMode && styles.inputContainerDark]}>
           <TextInput
