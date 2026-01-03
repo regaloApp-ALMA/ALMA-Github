@@ -34,69 +34,44 @@ export default function FruitDetailsScreen() {
 
   // --- LÓGICA DE ELIMINAR ---
   const handleDelete = () => {
-    console.log('🔴 [DEBUG] Botón borrar presionado - handleDelete llamado');
-    console.log('🔴 [DEBUG] ID de recuerdo:', id);
-    console.log('🔴 [DEBUG] isDeleting:', isDeleting);
+    console.log("🗑️ BOTÓN PULSADO - handleDelete");
     
     if (isDeleting) {
-      console.log('⚠️ [DEBUG] Ya se está borrando, ignorando clic');
-      return; // Prevenir múltiples clics
+      console.log('⚠️ Ya se está borrando, ignorando clic');
+      return;
     }
     
-    console.log('🗑️ [Fruit Delete] Iniciando borrado de recuerdo:', id);
-    
-    // Asegurar que Alert se ejecute en el hilo principal
-    setTimeout(() => {
-      Alert.alert(
-        "¿Eliminar Recuerdo?",
-        "Esta acción no se puede deshacer y borrará todo el contenido asociado.",
-        [
-          { 
-            text: "Cancelar", 
-            style: "cancel",
-            onPress: () => {
-              console.log('❌ [Fruit Delete] Cancelado por el usuario');
-            }
-          },
-          {
-            text: "Eliminar",
-            style: "destructive",
-            onPress: async () => {
-              console.log('✅ [Fruit Delete] Usuario confirmó, ejecutando borrado...');
-              setIsDeleting(true);
+    Alert.alert(
+      "¿Eliminar Recuerdo?",
+      "Esta acción es irreversible y borrará todo el contenido asociado.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Eliminar", 
+          style: "destructive", 
+          onPress: async () => {
+            console.log('✅ Usuario confirmó borrado de recuerdo');
+            setIsDeleting(true);
+            
+            try {
+              await deleteFruit(id);
+              console.log('✅ Recuerdo borrado exitosamente');
               
-              try {
-                await deleteFruit(id);
-                console.log('✅ [Fruit Delete] Recuerdo borrado exitosamente');
-                
-                // Recargar árbol para sincronizar
-                await fetchMyTree();
-                
-                // Redirigir de vuelta a la rama
-                router.back();
-              } catch (e: any) {
-                console.error('❌ [Fruit Delete] Error completo:', e);
-                console.error('❌ [Fruit Delete] Error message:', e.message);
-                console.error('❌ [Fruit Delete] Error code:', e.code);
-                setIsDeleting(false);
-                
-                const errorMessage = e.message || e.error?.message || "No se pudo eliminar el recuerdo";
-                Alert.alert("Error", errorMessage);
-                
-                // Si hay un error de RLS o permisos, mostrarlo claramente
-                if (e.code === '42501' || e.message?.includes('permission') || e.message?.includes('RLS')) {
-                  Alert.alert(
-                    "Error de permisos", 
-                    "No tienes permisos para eliminar este recuerdo. Verifica las políticas de seguridad en Supabase."
-                  );
-                }
-              }
+              // Recargar árbol
+              await fetchMyTree();
+              
+              // Navegación agresiva
+              router.dismissAll();
+              router.replace('/(tabs)/tree');
+            } catch (e: any) {
+              console.error('❌ Error borrando recuerdo:', e);
+              setIsDeleting(false);
+              Alert.alert("Error", e.message || "No se pudo eliminar el recuerdo");
             }
           }
-        ],
-        { cancelable: true }
-      );
-    }, 0);
+        }
+      ]
+    );
   };
 
   // --- FUNCIONALIDAD DE COMPARTIR FRUTO ---

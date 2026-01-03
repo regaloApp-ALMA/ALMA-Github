@@ -488,8 +488,18 @@ export const useTreeStore = create<TreeState>((set, get) => ({
           viewingTree: previousViewingTree
         });
         
+        // Verificar si es error de permisos/RLS
+        const isPermissionError = error.code === '42501' || 
+                                 error.message?.toLowerCase().includes('policy') ||
+                                 error.message?.toLowerCase().includes('permission') ||
+                                 error.message?.toLowerCase().includes('rls');
+        
         // Crear un error más descriptivo
-        const enhancedError = new Error(error.message || 'No se pudo borrar la rama');
+        const errorMessage = isPermissionError 
+          ? 'Error de permisos: Verifica las políticas RLS en Supabase'
+          : (error.message || 'No se pudo borrar la rama');
+        
+        const enhancedError = new Error(errorMessage);
         (enhancedError as any).code = error.code;
         (enhancedError as any).error = error;
         throw enhancedError;
@@ -756,8 +766,18 @@ export const useTreeStore = create<TreeState>((set, get) => ({
           viewingTree: previousViewingTree
         });
         
+        // Verificar si es error de permisos/RLS
+        const isPermissionError = error.code === '42501' || 
+                                 error.message?.toLowerCase().includes('policy') ||
+                                 error.message?.toLowerCase().includes('permission') ||
+                                 error.message?.toLowerCase().includes('rls');
+        
         // Crear un error más descriptivo
-        const enhancedError = new Error(error.message || 'No se pudo borrar el recuerdo');
+        const errorMessage = isPermissionError 
+          ? 'Error de permisos: Verifica las políticas RLS en Supabase'
+          : (error.message || 'No se pudo borrar el recuerdo');
+        
+        const enhancedError = new Error(errorMessage);
         (enhancedError as any).code = error.code;
         (enhancedError as any).error = error;
         throw enhancedError;

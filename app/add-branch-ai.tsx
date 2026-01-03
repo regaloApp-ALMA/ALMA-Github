@@ -24,7 +24,7 @@ const styles = StyleSheet.create({
 export default function AddBranchAIScreen() {
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
-  const { addBranch } = useTreeStore();
+  const { addBranch, fetchMyTree } = useTreeStore();
   const { theme } = useThemeStore();
   const isDarkMode = theme === 'dark';
   const router = useRouter();
@@ -70,7 +70,10 @@ export default function AddBranchAIScreen() {
         position: { x: 0, y: 0 }
       });
 
-      // 🎯 Navegación automática: Volver al árbol y recargar
+      // Forzar recarga del árbol
+      await fetchMyTree(true);
+      
+      // Navegación agresiva al Tab de Árbol
       router.dismissAll();
       router.replace('/(tabs)/tree');
       

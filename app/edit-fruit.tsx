@@ -21,12 +21,11 @@ export default function EditFruitScreen() {
   const [description, setDescription] = useState('');
   const [selectedBranch, setSelectedBranch] = useState('');
   const [mediaUrls, setMediaUrls] = useState<string[]>([]);
+  const [originalMediaUrls, setOriginalMediaUrls] = useState<string[]>([]); // Guardar el estado original
   const [isPublic, setIsPublic] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
-  
-  // Nota: isUploading ahora solo se usa durante handleSave, no en handlePickMedia
 
   useEffect(() => {
     if (!tree) {
@@ -38,7 +37,9 @@ export default function EditFruitScreen() {
         setTitle(fruit.title);
         setDescription(fruit.description || '');
         setSelectedBranch(fruit.branchId);
-        setMediaUrls(fruit.mediaUrls || []);
+        const initialUrls = fruit.mediaUrls || [];
+        setMediaUrls(initialUrls);
+        setOriginalMediaUrls([...initialUrls]); // Guardar copia del array original
         setIsPublic(fruit.isPublic !== undefined ? fruit.isPublic : true);
         setIsLoading(false);
       } else {
@@ -98,30 +99,27 @@ export default function EditFruitScreen() {
 
     setIsSaving(true);
     try {
-      // 📸 REFACTOR: Subir fotos/videos SOLO al guardar
+      // 📸 LÓGICA COMPLETA: Comparar original vs nuevo y subir solo lo necesario
       let finalMediaUrls: string[] = [];
       
-      if (mediaUrls.length > 0) {
+      // Separar URLs locales (file://) de las remotas (https://)
+      const localUris = mediaUrls.filter(uri => uri.startsWith('file://') || uri.startsWith('content://'));
+      const remoteUrls = mediaUrls.filter(uri => !uri.startsWith('file://') && !uri.startsWith('content://'));
+      
+      // Subir nuevas imágenes locales
+      if (localUris.length > 0) {
         setIsUploading(true);
         try {
-          // Separar URLs locales (file://) de las remotas (https://)
-          const localUris = mediaUrls.filter(uri => uri.startsWith('file://') || uri.startsWith('content://'));
-          const remoteUrls = mediaUrls.filter(uri => !uri.startsWith('file://') && !uri.startsWith('content://'));
+          console.log('📤 Subiendo', localUris.length, 'archivos nuevos al storage...');
+          const uploadPromises = localUris.map(uri => 
+            uploadMedia(uri, user.id, 'memories')
+          );
+          const uploadResults = await Promise.all(uploadPromises);
+          const validUploaded = uploadResults.filter(url => url !== null) as string[];
+          console.log('✅', validUploaded.length, 'archivos nuevos subidos exitosamente');
           
-          // Subir solo las que son locales
-          if (localUris.length > 0) {
-            console.log('📤 Subiendo', localUris.length, 'archivos nuevos al storage...');
-            const uploadPromises = localUris.map(uri => 
-              uploadMedia(uri, user.id, 'memories')
-            );
-            const uploadResults = await Promise.all(uploadPromises);
-            const validUploaded = uploadResults.filter(url => url !== null) as string[];
-            finalMediaUrls = [...remoteUrls, ...validUploaded];
-            console.log('✅', validUploaded.length, 'archivos nuevos subidos exitosamente');
-          } else {
-            // Solo hay URLs remotas, mantenerlas todas
-            finalMediaUrls = remoteUrls;
-          }
+          // Combinar URLs remotas existentes + nuevas subidas
+          finalMediaUrls = [...remoteUrls, ...validUploaded];
         } catch (uploadError: any) {
           console.error('❌ Error subiendo archivos:', uploadError);
           Alert.alert('Error', 'No se pudieron subir algunos archivos. ' + (uploadError.message || ''));
@@ -131,19 +129,25 @@ export default function EditFruitScreen() {
         } finally {
           setIsUploading(false);
         }
+      } else {
+        // No hay nuevas imágenes, solo usar las remotas (que ya están filtradas)
+        finalMediaUrls = remoteUrls;
       }
+      
+      console.log('📊 URLs finales a guardar:', finalMediaUrls.length);
+      console.log('📊 URLs originales:', originalMediaUrls.length);
 
       await updateFruit(id, {
         title: title.trim(),
         description: description.trim(),
         branchId: selectedBranch,
-        mediaUrls: finalMediaUrls,
+        mediaUrls: finalMediaUrls, // Array final con solo las URLs que queremos mantener
         isPublic: isPublic,
       });
 
-      Alert.alert('¡Guardado!', 'El recuerdo se ha actualizado correctamente.', [
-        { text: 'OK', onPress: () => router.back() }
-      ]);
+      // Navegación forzada al detalle del fruto
+      router.dismissAll();
+      router.replace({ pathname: '/fruit-details', params: { id: id } });
     } catch (error: any) {
       Alert.alert('Error', error.message || 'No se pudo actualizar el recuerdo');
     } finally {

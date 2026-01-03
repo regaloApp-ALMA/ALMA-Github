@@ -121,70 +121,44 @@ export default function BranchDetailsScreen() {
 
   // --- LÓGICA DE ELIMINAR ---
   const handleDeleteBranch = () => {
-    console.log('🔴 [DEBUG] Botón borrar presionado - handleDeleteBranch llamado');
-    console.log('🔴 [DEBUG] ID de rama:', id);
-    console.log('🔴 [DEBUG] isDeleting:', isDeleting);
-    console.log('🔴 [DEBUG] finalIsOwner:', finalIsOwner);
+    console.log("🗑️ BOTÓN PULSADO - handleDeleteBranch");
     
     if (isDeleting) {
-      console.log('⚠️ [DEBUG] Ya se está borrando, ignorando clic');
-      return; // Prevenir múltiples clics
+      console.log('⚠️ Ya se está borrando, ignorando clic');
+      return;
     }
     
-    console.log('🗑️ [Branch Delete] Iniciando borrado de rama:', id);
-    
-    // Asegurar que Alert se ejecute en el hilo principal
-    setTimeout(() => {
-      Alert.alert(
-        "¿Eliminar Rama?",
-        "Esta acción no se puede deshacer y borrará todo el contenido asociado.",
-        [
-          { 
-            text: "Cancelar", 
-            style: "cancel",
-            onPress: () => {
-              console.log('❌ [Branch Delete] Cancelado por el usuario');
-            }
-          },
-          {
-            text: "Eliminar",
-            style: "destructive",
-            onPress: async () => {
-              console.log('✅ [Branch Delete] Usuario confirmó, ejecutando borrado...');
-              setIsDeleting(true);
+    Alert.alert(
+      "¿Eliminar Rama?",
+      "Esta acción es irreversible y borrará todo el contenido asociado.",
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Eliminar", 
+          style: "destructive", 
+          onPress: async () => {
+            console.log('✅ Usuario confirmó borrado de rama');
+            setIsDeleting(true);
+            
+            try {
+              await deleteBranch(id);
+              console.log('✅ Rama borrada exitosamente');
               
-              try {
-                await deleteBranch(id);
-                console.log('✅ [Branch Delete] Rama borrada exitosamente');
-                
-                // Recargar árbol para sincronizar
-                await fetchMyTree();
-                
-                // Redirigir al árbol principal
-                router.replace('/(tabs)/tree');
-              } catch (e: any) {
-                console.error('❌ [Branch Delete] Error completo:', e);
-                console.error('❌ [Branch Delete] Error message:', e.message);
-                console.error('❌ [Branch Delete] Error code:', e.code);
-                setIsDeleting(false);
-                
-                const errorMessage = e.message || e.error?.message || "No se pudo eliminar la rama";
-                Alert.alert("Error", errorMessage);
-                
-                // Si hay un error de RLS o permisos, mostrarlo claramente
-                if (e.code === '42501' || e.message?.includes('permission') || e.message?.includes('RLS')) {
-                  Alert.alert(
-                    "Error de permisos", 
-                    "No tienes permisos para eliminar esta rama. Verifica las políticas de seguridad en Supabase."
-                  );
-                }
-              }
+              // Recargar árbol
+              await fetchMyTree();
+              
+              // Navegación agresiva
+              router.dismissAll();
+              router.replace('/(tabs)/tree');
+            } catch (e: any) {
+              console.error('❌ Error borrando rama:', e);
+              setIsDeleting(false);
+              Alert.alert("Error", e.message || "No se pudo eliminar la rama");
             }
           }
-        ],
-        { cancelable: true }
-      );
-    }, 0);
+        }
+      ]
+    );
   };
 
   // --- LÓGICA DE PRIVACIDAD ---
