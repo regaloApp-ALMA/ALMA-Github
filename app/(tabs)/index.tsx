@@ -9,6 +9,7 @@ import { useRouter } from 'expo-router';
 import { Heart, Users, Gift, Trees, Upload, Flame, Calendar, Lightbulb, RefreshCw, Sparkles, Plus } from 'lucide-react-native';
 import { useThemeStore } from '@/stores/themeStore';
 import StreakModal from '@/components/StreakModal';
+import { useFocusEffect } from 'expo-router';
 
 // --- BANCO DE IDEAS (Frontend estático para inspiración) ---
 const MEMORY_PROMPTS = [
@@ -32,7 +33,7 @@ const MEMORY_PROMPTS = [
 export default function HomeScreen() {
   const { recentActivities, todayMemories, fetchHomeData, isLoading } = useMemoryStore();
   const { user } = useUserStore();
-  const { fetchMyTree } = useTreeStore();
+  const { fetchMyTree, tree } = useTreeStore();
   const router = useRouter();
   const { theme } = useThemeStore();
   const isDarkMode = theme === 'dark';
@@ -40,6 +41,16 @@ export default function HomeScreen() {
   const [showStreak, setShowStreak] = useState(false);
   const [currentIdeas, setCurrentIdeas] = useState<typeof MEMORY_PROMPTS>([]);
   const [refreshing, setRefreshing] = useState(false);
+
+  // Asegurar que el árbol se cargue al enfocar la pantalla
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!tree) {
+        fetchMyTree();
+      }
+      // No necesitamos limpieza en este caso
+    }, [tree, fetchMyTree])
+  );
 
   useEffect(() => {
     fetchHomeData();
@@ -213,6 +224,39 @@ export default function HomeScreen() {
           ))}
         </View>
 
+        {/* SECCIÓN 2.5: FAMILIA (Sincronizado con Tree) */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Users size={20} color={colors.primary} />
+            <Text style={[styles.sectionTitle, isDarkMode && styles.sectionTitleDark]}>Familia</Text>
+          </View>
+
+          {tree?.roots && tree.roots.length > 0 ? (
+            tree.roots
+              .filter((root) => root.status === 'active' || !root.status) // Filtrar solo activos
+              .map((root) => (
+                <TouchableOpacity
+                  key={root.id}
+                  style={[styles.familyCard, isDarkMode && styles.familyCardDark]}
+                  onPress={() => router.push({ pathname: '/root-details', params: { id: root.id } })}
+                >
+                  <View style={styles.familyAvatar}>
+                    <Text style={styles.familyAvatarText}>{root.name.charAt(0).toUpperCase()}</Text>
+                  </View>
+                  <View style={styles.familyInfo}>
+                    <Text style={[styles.familyName, isDarkMode && styles.textWhite]}>{root.name}</Text>
+                    <Text style={[styles.familyRelation, isDarkMode && styles.textLight]}>{root.relation}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))
+          ) : (
+            <View style={styles.emptyState}>
+              <Text style={[styles.emptyText, isDarkMode && styles.textLight]}>Aún no tienes familiares conectados.</Text>
+              <Text style={[styles.emptySubText, isDarkMode && styles.textLight]}>Invita a tus familiares para ver sus árboles.</Text>
+            </View>
+          )}
+        </View>
+
         {/* SECCIÓN 3: ACTIVIDAD FAMILIAR */}
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -233,8 +277,8 @@ export default function HomeScreen() {
             ))
           ) : (
             <View style={styles.emptyState}>
-              <Text style={styles.emptyText}>Todo está tranquilo por aquí.</Text>
-              <Text style={styles.emptySubText}>Añade familiares para ver su actividad.</Text>
+              <Text style={[styles.emptyText, isDarkMode && styles.textLight]}>Todo está tranquilo por aquí.</Text>
+              <Text style={[styles.emptySubText, isDarkMode && styles.textLight]}>Añade familiares para ver su actividad.</Text>
             </View>
           )}
         </View>
@@ -362,6 +406,50 @@ const styles = StyleSheet.create({
   ideaCategory: { fontSize: 10, fontWeight: 'bold', marginBottom: 2, letterSpacing: 1 },
   ideaText: { fontSize: 14, color: '#444', fontWeight: '500' },
 
+  // TARJETAS DE FAMILIA
+  familyCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  familyCardDark: {
+    backgroundColor: '#1E1E1E',
+  },
+  familyAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.primaryLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  familyAvatarText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colors.primary,
+  },
+  familyInfo: {
+    flex: 1,
+  },
+  familyName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colors.text,
+    marginBottom: 2,
+  },
+  familyRelation: {
+    fontSize: 13,
+    color: colors.textLight,
+  },
   // ESTADO VACÍO (ACTIVIDAD)
   emptyState: { padding: 30, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.02)', borderRadius: 12, borderStyle: 'dashed', borderWidth: 1, borderColor: '#DDD' },
   emptyText: { color: colors.text, fontWeight: '600' },

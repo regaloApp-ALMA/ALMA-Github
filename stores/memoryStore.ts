@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
+import { formatRelativeTime } from '@/lib/dateHelper';
 
 interface MemoryState {
   todayMemories: any[];
@@ -164,7 +165,7 @@ export const useMemoryStore = create<MemoryState>((set) => ({
                 userInitial: (f.branch?.tree?.owner?.name || 'F').charAt(0),
                 action: `añadió el recuerdo "${f.title}"`,
                 timestamp: f.created_at,
-                timeAgo: 'recientemente' // Podríamos usar date-fns aquí
+                timeAgo: formatRelativeTime(f.created_at) // Usar helper para formateo correcto
               }));
           }
         }

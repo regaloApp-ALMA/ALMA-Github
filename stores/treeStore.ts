@@ -211,11 +211,12 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         console.log('ℹ️ No hay ramas, no se pueden cargar frutos');
       }
 
-      // 4. Obtener Raíces (Familiares) - Incluir status
+      // 4. Obtener Raíces (Familiares) - Incluir status, filtrar solo activas
       const { data: rootsData } = await supabase
         .from('family_connections')
         .select(`id, relation, created_at, status, relative:profiles!relative_id (name)`)
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .eq('status', 'active'); // Solo mostrar conexiones activas
 
       const formattedRoots: RootType[] = (rootsData || []).map((r: any) => ({
         id: r.id,

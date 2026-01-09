@@ -21,7 +21,7 @@ const ActivityItem = ({ userInitial, userName, action, timeAgo, onPress, isDarkM
         <Text style={[styles.text, isDarkMode && styles.textDark]}>
           <Text style={[styles.name, isDarkMode && styles.nameDark]}>{userName}</Text> {action}
         </Text>
-        <Text style={[styles.time, isDarkMode && styles.timeDark]}>Hace {timeAgo}</Text>
+        <Text style={[styles.time, isDarkMode && styles.timeDark]}>{timeAgo}</Text>
       </View>
     </TouchableOpacity>
   );

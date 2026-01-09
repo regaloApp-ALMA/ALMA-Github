@@ -30,6 +30,7 @@ export default function AIAssistant() {
   const isDarkMode = theme === 'dark';
 
   // CONSTRUCCIÓN DE CONTEXTO INTELIGENTE: Recuerdos propios y de familiares
+  // Combinados y ordenados cronológicamente (newest first) con etiquetas de fecha
   const buildContext = async (): Promise<string> => {
     if (!user?.id) return '';
 
@@ -41,38 +42,55 @@ export default function AIAssistant() {
         .eq('owner_id', user.id)
         .single();
 
-      let myContext = '';
+      const allMemories: Array<{
+        title: string;
+        description: string;
+        date: string;
+        created_at: string;
+        branchName: string;
+        owner: string;
+        isOwn: boolean;
+      }> = [];
+
       if (myTree) {
         const { data: myBranches } = await supabase
           .from('branches')
-          .select('id')
+          .select('id, name')
           .eq('tree_id', myTree.id);
 
         const branchIds = myBranches?.map(b => b.id) || [];
+        const branchMap = new Map(myBranches?.map(b => [b.id, b.name]) || []);
 
         if (branchIds.length > 0) {
           const { data: myFruits } = await supabase
             .from('fruits')
-            .select('title, description, date, branch:branches(name)')
+            .select('title, description, date, created_at, branch_id')
             .in('branch_id', branchIds)
-            .order('created_at', { ascending: false })
-            .limit(15);
+            .limit(20); // Aumentar límite para mejor ordenamiento
 
           if (myFruits && myFruits.length > 0) {
-            myContext = 'MIS RECUERDOS:\n' + myFruits.map((f: any) => 
-              `- "${f.title}": ${f.description || 'Sin descripción'} (en la rama "${f.branch?.name || 'Sin rama'}")`
-            ).join('\n');
+            myFruits.forEach((f: any) => {
+              allMemories.push({
+                title: f.title,
+                description: f.description || 'Sin descripción',
+                date: f.date || f.created_at,
+                created_at: f.created_at,
+                branchName: branchMap.get(f.branch_id) || 'Sin rama',
+                owner: 'Yo',
+                isOwn: true,
+              });
+            });
           }
         }
       }
 
-      // 2. Obtener recuerdos de familiares conectados
+      // 2. Obtener recuerdos de familiares conectados (solo activos)
       const { data: connections } = await supabase
         .from('family_connections')
         .select('relative_id')
-        .eq('user_id', user.id);
+        .eq('user_id', user.id)
+        .eq('status', 'active'); // Solo conexiones activas
 
-      let familyContext = '';
       if (connections && connections.length > 0) {
         const familyIds = connections.map(c => c.relative_id);
 
@@ -84,48 +102,86 @@ export default function AIAssistant() {
 
         if (familyTrees && familyTrees.length > 0) {
           const treeIds = familyTrees.map(t => t.id);
+          const ownerMap = new Map(familyTrees.map((t: any) => [t.id, t.owner?.name || 'Familiar']));
 
           // Buscar ramas de esos árboles
           const { data: familyBranches } = await supabase
             .from('branches')
-            .select('id, tree_id')
+            .select('id, tree_id, name')
             .in('tree_id', treeIds);
 
           const branchIds = familyBranches?.map(b => b.id) || [];
+          const familyBranchMap = new Map(familyBranches?.map(b => [b.id, { name: b.name, treeId: b.tree_id }]) || []);
 
           if (branchIds.length > 0) {
             // Buscar frutos de esos árboles
             const { data: familyFruits } = await supabase
               .from('fruits')
-              .select(`
-                title, description, date,
-                branch:branches(
-                  name,
-                  tree:trees(
-                    owner:profiles(name)
-                  )
-                )
-              `)
+              .select('title, description, date, created_at, branch_id')
               .in('branch_id', branchIds)
-              .order('created_at', { ascending: false })
-              .limit(20);
+              .limit(30); // Aumentar límite para mejor ordenamiento
 
             if (familyFruits && familyFruits.length > 0) {
-              const familyMap = new Map();
-              familyTrees.forEach((t: any) => {
-                familyMap.set(t.owner_id, t.owner?.name || 'Familiar');
-              });
+              familyFruits.forEach((f: any) => {
+                const branchInfo = familyBranchMap.get(f.branch_id);
+                const treeId = branchInfo?.treeId;
+                const ownerName = treeId ? ownerMap.get(treeId) || 'Familiar' : 'Familiar';
 
-              familyContext = '\n\nRECUERDOS DE MI FAMILIA:\n' + familyFruits.map((f: any) => {
-                const ownerName = f.branch?.tree?.owner?.name || 'Un familiar';
-                return `- ${ownerName} tiene un recuerdo sobre "${f.title}": ${f.description || 'Sin descripción'} (en la rama "${f.branch?.name || 'Sin rama'}")`;
-              }).join('\n');
+                allMemories.push({
+                  title: f.title,
+                  description: f.description || 'Sin descripción',
+                  date: f.date || f.created_at,
+                  created_at: f.created_at,
+                  branchName: branchInfo?.name || 'Sin rama',
+                  owner: ownerName,
+                  isOwn: false,
+                });
+              });
             }
           }
         }
       }
 
-      return myContext + familyContext;
+      // 3. ORDENAR CRONOLÓGICAMENTE (Newest First) por created_at
+      allMemories.sort((a, b) => {
+        const dateA = new Date(a.created_at).getTime();
+        const dateB = new Date(b.created_at).getTime();
+        return dateB - dateA; // Descendente = más recientes primero
+      });
+
+      // 4. Formatear con etiquetas de fecha y límite a los más relevantes
+      const limitedMemories = allMemories.slice(0, 25); // Limitar a 25 recuerdos más recientes
+
+      if (limitedMemories.length === 0) {
+        return '';
+      }
+
+      // Separar en propios y de familia
+      const ownMemories = limitedMemories.filter(m => m.isOwn);
+      const familyMemories = limitedMemories.filter(m => !m.isOwn);
+
+      let contextText = '';
+
+      // Formatear recuerdos propios
+      if (ownMemories.length > 0) {
+        contextText += 'MIS RECUERDOS (ordenados del más reciente al más antiguo):\n';
+        ownMemories.forEach((mem) => {
+          const dateLabel = mem.date ? new Date(mem.date).toISOString().split('T')[0] : new Date(mem.created_at).toISOString().split('T')[0];
+          contextText += `[Fecha: ${dateLabel}] Título: "${mem.title}" - ${mem.description} (en la rama "${mem.branchName}")\n`;
+        });
+      }
+
+      // Formatear recuerdos de familia
+      if (familyMemories.length > 0) {
+        if (contextText) contextText += '\n';
+        contextText += 'RECUERDOS DE MI FAMILIA (ordenados del más reciente al más antiguo):\n';
+        familyMemories.forEach((mem) => {
+          const dateLabel = mem.date ? new Date(mem.date).toISOString().split('T')[0] : new Date(mem.created_at).toISOString().split('T')[0];
+          contextText += `[Fecha: ${dateLabel}] ${mem.owner} - Título: "${mem.title}" - ${mem.description} (en la rama "${mem.branchName}")\n`;
+        });
+      }
+
+      return contextText;
     } catch (error) {
       console.error('Error building context:', error);
       return '';
