@@ -8,6 +8,7 @@ import { Image as ImageIcon, X, Video } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadMedia } from '@/lib/storageHelper';
 import { useUserStore } from '@/stores/userStore';
+import { processMediaAsset } from '@/lib/mediaHelper';
 
 export default function AddMemoryManualScreen() {
   const { branchId } = useLocalSearchParams<{ branchId?: string }>();
@@ -33,22 +34,37 @@ export default function AddMemoryManualScreen() {
 
   const handlePickMedia = async () => {
     try {
-      // SOLUCIÓN: Configuración simplificada sin videoExportPreset (causa errores de casting)
+      // Configuración optimizada: videoQuality para reducir peso de videos
       const pickerOptions: ImagePicker.ImagePickerOptions = {
         mediaTypes: ImagePicker.MediaTypeOptions?.All || 'All' as any,
         allowsEditing: false,
         allowsMultipleSelection: true,
         quality: 0.7,
+        videoQuality: ImagePicker.UIImagePickerControllerQualityType?.Medium || 'medium' as any,
       };
 
       const result = await ImagePicker.launchImageLibraryAsync(pickerOptions);
 
       if (!result.canceled && result.assets) {
-        // 📸 OPTIMIZACIÓN: Solo guardar URIs locales, NO subir todavía
-        // Las URIs locales son del tipo: file:///path/to/image.jpg
-        const localUris = result.assets.map(asset => asset.uri);
-        setMediaUrls(prev => [...prev, ...localUris]);
-        console.log('📸 Media seleccionado (URIs locales guardadas):', localUris.length);
+        // 📸 OPTIMIZACIÓN: Procesar y validar cada asset
+        const processedUris: string[] = [];
+        
+        for (const asset of result.assets) {
+          try {
+            const processedUri = await processMediaAsset(asset, 'memory');
+            if (processedUri) {
+              processedUris.push(processedUri);
+            }
+          } catch (error: any) {
+            console.error('Error procesando asset:', error);
+            // Continuar con el siguiente asset si uno falla
+          }
+        }
+        
+        if (processedUris.length > 0) {
+          setMediaUrls(prev => [...prev, ...processedUris]);
+          console.log('📸 Media procesado y validado:', processedUris.length);
+        }
       }
     } catch (error: any) {
       console.error('Error picking media:', error);

@@ -8,6 +8,7 @@ import { User, Mail, Phone, MapPin, Calendar, Save, Camera } from 'lucide-react-
 import { supabase } from '@/lib/supabase';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadMedia } from '@/lib/storageHelper';
+import { optimizeImage } from '@/lib/mediaHelper';
 
 export default function ProfileSettingsScreen() {
   const { user, initialize } = useUserStore();
@@ -45,7 +46,7 @@ export default function ProfileSettingsScreen() {
   // FUNCIÓN PARA CAMBIAR FOTO
   const handlePickImage = async () => {
     try {
-      // SOLUCIÓN: Usar MediaTypeOptions con fallback seguro
+      // Configuración para imágenes de perfil
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions?.Images || 'Images' as any,
         allowsEditing: true,
@@ -53,12 +54,15 @@ export default function ProfileSettingsScreen() {
         quality: 0.5,
       });
 
-      if (!result.canceled) {
+      if (!result.canceled && result.assets[0]) {
         setIsUploading(true);
-        const uri = result.assets[0].uri;
+        const originalUri = result.assets[0].uri;
+
+        // 📸 OPTIMIZACIÓN: Optimizar imagen antes de subir (300x300px, compresión 0.5)
+        const optimizedUri = await optimizeImage(originalUri, 'profile');
 
         if (user?.id) {
-          const publicUrl = await uploadMedia(uri, user.id, 'avatars');
+          const publicUrl = await uploadMedia(optimizedUri, user.id, 'avatars');
           if (publicUrl) {
             setAvatarUrl(publicUrl);
           } else {

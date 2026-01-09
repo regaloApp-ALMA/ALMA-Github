@@ -9,6 +9,7 @@ import { Sparkles, Mic, Check, RefreshCw, Image as ImageIcon, Wand2, BookOpen, X
 import * as ImagePicker from 'expo-image-picker';
 import { uploadMedia } from '@/lib/storageHelper';
 import { useUserStore } from '@/stores/userStore';
+import { processMediaAsset } from '@/lib/mediaHelper';
 
 export default function AddMemoryAIScreen() {
   const [prompt, setPrompt] = useState('');
@@ -147,22 +148,37 @@ NO hagas descripciones como: "Fue un día especial con mi familia." Eso es demas
 
   const handlePickImage = async () => {
     try {
-      // SOLUCIÓN: Configuración simplificada sin videoExportPreset (causa errores de casting)
+      // Configuración optimizada: videoQuality para reducir peso de videos
       const pickerOptions: ImagePicker.ImagePickerOptions = {
         mediaTypes: ImagePicker.MediaTypeOptions?.All || 'All' as any,
         allowsEditing: true,
         allowsMultipleSelection: true, // Permitir múltiples selecciones
         quality: 0.6,
+        videoQuality: ImagePicker.UIImagePickerControllerQualityType?.Medium || 'medium' as any,
       };
       
       const result = await ImagePicker.launchImageLibraryAsync(pickerOptions);
 
       if (!result.canceled && result.assets) {
-        // 📸 OPTIMIZACIÓN: Solo guardar URIs locales, NO subir todavía
-        // Las URIs locales son del tipo: file:///path/to/image.jpg
-        const localUris = result.assets.map(asset => asset.uri);
-        setMediaUrls(prev => [...prev, ...localUris]);
-        console.log('📸 Media seleccionado (URIs locales guardadas):', localUris.length);
+        // 📸 OPTIMIZACIÓN: Procesar y validar cada asset
+        const processedUris: string[] = [];
+        
+        for (const asset of result.assets) {
+          try {
+            const processedUri = await processMediaAsset(asset, 'memory');
+            if (processedUri) {
+              processedUris.push(processedUri);
+            }
+          } catch (error: any) {
+            console.error('Error procesando asset:', error);
+            // Continuar con el siguiente asset si uno falla
+          }
+        }
+        
+        if (processedUris.length > 0) {
+          setMediaUrls(prev => [...prev, ...processedUris]);
+          console.log('📸 Media procesado y validado:', processedUris.length);
+        }
       }
     } catch (error: any) {
       console.error('Error picking image:', error);

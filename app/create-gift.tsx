@@ -10,6 +10,7 @@ import { Gift, Clock, Send, Heart, Image as ImageIcon, X, Calendar } from 'lucid
 import * as ImagePicker from 'expo-image-picker';
 import { uploadMedia } from '@/lib/storageHelper';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { processMediaAsset } from '@/lib/mediaHelper';
 
 export default function CreateGiftScreen() {
   const [giftType, setGiftType] = useState<'instant' | 'timeCapsule' | null>(null);
@@ -32,12 +33,13 @@ export default function CreateGiftScreen() {
 
   const handlePickImage = async () => {
     try {
-      // SOLUCIÓN: Configuración simplificada sin videoExportPreset (causa errores de casting)
+      // Configuración optimizada: videoQuality para reducir peso de videos
       const pickerOptions: ImagePicker.ImagePickerOptions = {
         mediaTypes: ImagePicker.MediaTypeOptions?.All || 'All' as any,
         allowsEditing: true,
         allowsMultipleSelection: true, // Permitir múltiples selecciones
         quality: 0.6,
+        videoQuality: ImagePicker.UIImagePickerControllerQualityType?.Medium || 'medium' as any,
       };
 
       const result = await ImagePicker.launchImageLibraryAsync(pickerOptions);
@@ -45,13 +47,30 @@ export default function CreateGiftScreen() {
       if (!result.canceled && user?.id && result.assets) {
         setIsUploading(true);
         try {
-          // Subir todos los archivos seleccionados
-          const uploadPromises = result.assets.map(asset => 
-            uploadMedia(asset.uri, user.id, 'memories')
-          );
-          const uploadedUrls = await Promise.all(uploadPromises);
-          const validUrls = uploadedUrls.filter(url => url !== null) as string[];
-          setMediaUrls(prev => [...prev, ...validUrls]);
+          // 📸 OPTIMIZACIÓN: Procesar y validar cada asset antes de subir
+          const processedUris: string[] = [];
+          
+          for (const asset of result.assets) {
+            try {
+              const processedUri = await processMediaAsset(asset, 'memory');
+              if (processedUri) {
+                processedUris.push(processedUri);
+              }
+            } catch (error: any) {
+              console.error('Error procesando asset:', error);
+              // Continuar con el siguiente asset si uno falla
+            }
+          }
+          
+          // Subir todos los archivos procesados
+          if (processedUris.length > 0) {
+            const uploadPromises = processedUris.map(uri => 
+              uploadMedia(uri, user.id, 'memories')
+            );
+            const uploadedUrls = await Promise.all(uploadPromises);
+            const validUrls = uploadedUrls.filter(url => url !== null) as string[];
+            setMediaUrls(prev => [...prev, ...validUrls]);
+          }
         } finally {
           setIsUploading(false);
         }
