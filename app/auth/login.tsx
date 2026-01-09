@@ -164,6 +164,9 @@ export default function LoginScreen() {
                 <Text style={styles.registerLink}>Regístrate aquí</Text>
               </TouchableOpacity>
             </View>
+
+            {/* Espaciador adicional para asegurar que haya espacio suficiente al final */}
+            <View style={styles.bottomSpacer} />
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -173,7 +176,7 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  scrollContainer: { flexGrow: 1, minHeight: '100%', paddingBottom: 100 },
+  scrollContainer: { flexGrow: 1, paddingBottom: 200, paddingTop: 0 }, // Aumentado significativamente para dar mucho margen final
   logoContainer: { height: '35%', alignItems: 'center', justifyContent: 'center', position: 'relative' },
   logoBackground: { position: 'absolute', width: '100%', height: '100%' },
   overlay: { position: 'absolute', width: '100%', height: '100%', backgroundColor: 'rgba(0, 0, 0, 0.5)' },
@@ -195,7 +198,8 @@ const styles = StyleSheet.create({
   googleButtonDisabled: { opacity: 0.5, backgroundColor: colors.background },
   googleButtonText: { color: colors.text, fontSize: 16, fontWeight: '600' },
   googleButtonTextDisabled: { color: colors.textLight },
-  footerContainer: { flexDirection: 'row', justifyContent: 'center', marginTop: 'auto', paddingTop: 40 },
+  footerContainer: { flexDirection: 'row', justifyContent: 'center', paddingTop: 40, flexWrap: 'wrap' },
   footerText: { color: colors.textLight, fontSize: 14 },
   registerLink: { color: colors.primary, fontSize: 14, fontWeight: 'bold', marginLeft: 5 },
+  bottomSpacer: { height: 60 }, // Espaciador adicional para asegurar espacio al final
 });
