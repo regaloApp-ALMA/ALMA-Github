@@ -34,11 +34,12 @@ export const useMemoryStore = create<MemoryState>((set) => ({
 
       const myTreeIds = myTrees?.map(t => t.id) || [];
 
-      // b) Obtener IDs de familiares conectados
+      // b) Obtener IDs de familiares conectados (SOLO ACTIVOS)
       const { data: connections } = await supabase
         .from('family_connections')
         .select('relative_id')
-        .eq('user_id', session.user.id);
+        .eq('user_id', session.user.id)
+        .eq('status', 'active'); // 🔧 CORRECCIÓN: Filtrar solo conexiones activas
 
       const familyIds = connections?.map(c => c.relative_id) || [];
 
@@ -79,19 +80,19 @@ export const useMemoryStore = create<MemoryState>((set) => ({
           // Filtrar recuerdos: día y mes actual, años anteriores, con rango de +/- 15 días
           const todayMonth = today.getMonth();
           const todayDay = today.getDate();
-          
+
           const filteredMemories = (fruits || []).filter((f: any) => {
             if (!f.date) return false;
             const d = new Date(f.date);
             const memoryMonth = d.getMonth();
             const memoryDay = d.getDate();
-            
+
             // Calcular diferencia en días (ignorando año)
             const thisYear = new Date(today.getFullYear(), memoryMonth, memoryDay);
             const diffDays = Math.abs(
               Math.floor((thisYear.getTime() - today.getTime()) / dayMs)
             );
-            
+
             // Incluir si está en el rango de +/- 15 días del día/mes actual
             return diffDays <= 15;
           });
@@ -151,7 +152,7 @@ export const useMemoryStore = create<MemoryState>((set) => ({
             // Filtrar actividad de los últimos 7 días
             const sevenDaysAgo = new Date();
             sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-            
+
             // Formatear para la UI y filtrar por fecha
             activities = (recentFruits || [])
               .filter((f: any) => {

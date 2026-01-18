@@ -1,4 +1,4 @@
-import React, { memo, useMemo, useEffect } from 'react';
+import React, { memo, useMemo, useEffect, useState } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity, Dimensions, ScrollView, ActivityIndicator, Share } from 'react-native';
 import { ReactNativeZoomableView } from '@openspacelabs/react-native-zoomable-view';
 import Svg, { Path, Defs, LinearGradient, Stop, Circle } from 'react-native-svg';
@@ -6,13 +6,22 @@ import { useTreeStore } from '@/stores/treeStore';
 import { BranchType, RootType, TreeType } from '@/types/tree';
 import { useRouter } from 'expo-router';
 import colors from '@/constants/colors';
-import { Sprout } from 'lucide-react-native';
+import { Sprout, Edit3, Check, ChevronUp, ChevronDown } from 'lucide-react-native';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 // ════════════════════════════════════════════════════════════════════════════════
 // 🎨 CONFIGURACIÓN DE DISEÑO
 // ════════════════════════════════════════════════════════════════════════════════
+
+// Tipo extendido para ramas con layout calculado
+type LayoutBranchType = BranchType & {
+    x: number;
+    y: number;
+    path: string;
+    fruitCount: number;
+    startY: number;
+};
 
 const CANVAS_WIDTH = 1200;
 const CANVAS_HEIGHT = 2400; // Mayor altura para árboles grandes
@@ -44,10 +53,10 @@ const generateDynamicTrunkPath = (centerX: number, baseY: number, topY: number):
     const baseWidth = 44;
     const topWidth = 16;
     const trunkHeight = baseY - topY;
-    
+
     // Puntos de control para curvas suaves
     const midY = baseY - trunkHeight * 0.5;
-    
+
     return `
         M ${centerX - baseWidth / 2} ${baseY}
         C ${centerX - baseWidth / 2 - 4} ${baseY - 250}, 
@@ -73,7 +82,7 @@ const generateCurvedBranchPath = (
     // Punto de control: misma altura que el destino, en el eje X del tronco
     const controlX = startX;
     const controlY = endY;
-    
+
     return `M ${startX} ${startY} Q ${controlX} ${controlY} ${endX} ${endY}`;
 };
 
@@ -83,11 +92,11 @@ const generateCurvedBranchPath = (
 const calculateAutoPosition = (index: number, totalBranches: number): { x: number; y: number } => {
     const isLeft = index % 2 === 0;
     const sideMultiplier = isLeft ? -1 : 1;
-    
+
     // Distribución vertical en abanico
     const verticalSpacing = 150;
     const branchLength = 200 + (index % 3) * 30; // Variación orgánica
-    
+
     return {
         x: sideMultiplier * branchLength,
         y: -(250 + index * verticalSpacing) // Negativo = hacia arriba
@@ -98,44 +107,72 @@ const calculateAutoPosition = (index: number, totalBranches: number): { x: numbe
 // 🧩 COMPONENTES INTERACTIVOS
 // ════════════════════════════════════════════════════════════════════════════════
 
-const BranchBubble = memo(({ 
-    branch, 
-    x, 
-    y, 
-    onPress, 
-    fruitCount 
-}: { 
-    branch: BranchType; 
-    x: number; 
-    y: number; 
-    onPress: (b: BranchType) => void; 
+const BranchBubble = memo(({
+    branch,
+    x,
+    y,
+    onPress,
+    fruitCount,
+    isEditMode,
+    onMove
+}: {
+    branch: LayoutBranchType;
+    x: number;
+    y: number;
+    onPress: (b: BranchType) => void;
     fruitCount: number;
+    isEditMode: boolean;
+    onMove: (b: LayoutBranchType, dir: 'up' | 'down') => void;
 }) => (
-    <View style={{ 
-        position: 'absolute', 
-        left: x - 45, 
-        top: y - 45, 
-        width: 90, 
-        height: 90, 
-        alignItems: 'center', 
-        justifyContent: 'center' 
+    <View style={{
+        position: 'absolute',
+        left: x - 45,
+        top: y - 45,
+        width: 90,
+        height: 140, // Aumentado para flechas
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: isEditMode ? 100 : 1
     }}>
-        {fruitCount > 0 && (
+        {isEditMode && (
+            <TouchableOpacity
+                style={[styles.arrowButton, styles.arrowUp]}
+                onPress={() => onMove(branch, 'up')}
+            >
+                <ChevronUp size={20} color="#FFF" />
+            </TouchableOpacity>
+        )}
+
+        {fruitCount > 0 && !isEditMode && (
             <View style={styles.badge}>
                 <Text style={styles.badgeText}>{fruitCount}</Text>
             </View>
         )}
-        
+
         <TouchableOpacity
-            style={[styles.branchCircle, { backgroundColor: branch.color || colors.primary }]}
-            onPress={() => onPress(branch)}
+            style={[
+                styles.branchCircle,
+                { backgroundColor: branch.color || colors.primary },
+                isEditMode && styles.branchCircleEditing
+            ]}
+            onPress={() => !isEditMode && onPress(branch)}
             activeOpacity={0.8}
+            onLongPress={() => !isEditMode && onPress(branch)} // Fallback
         >
             <View style={styles.branchBorder} />
             <Text style={styles.branchText} numberOfLines={2} adjustsFontSizeToFit>
                 {branch.name}
             </Text>
         </TouchableOpacity>
+
+        {isEditMode && (
+            <TouchableOpacity
+                style={[styles.arrowButton, styles.arrowDown]}
+                onPress={() => onMove(branch, 'down')}
+            >
+                <ChevronDown size={20} color="#FFF" />
+            </TouchableOpacity>
+        )}
     </View>
 ));
 
@@ -161,8 +198,9 @@ type TreeProps = {
 };
 
 export default function Tree({ treeData, isShared = false }: TreeProps = {}) {
-    const { tree: storeTree, isLoading, fetchMyTree } = useTreeStore();
+    const { tree: storeTree, isLoading, fetchMyTree, updateBranch } = useTreeStore();
     const router = useRouter();
+    const [isEditMode, setIsEditMode] = useState(false);
 
     // Usar el árbol pasado como prop o el del store
     const tree = treeData || storeTree;
@@ -177,7 +215,7 @@ export default function Tree({ treeData, isShared = false }: TreeProps = {}) {
     // 🔄 Recargar cuando vuelve a la pantalla (solo si no es compartido)
     useEffect(() => {
         if (isShared || treeData) return; // No recargar si es compartido
-        
+
         // @ts-ignore - addListener existe en tiempo de ejecución
         const unsubscribe = router.addListener?.('focus', () => {
             fetchMyTree(true);
@@ -187,19 +225,19 @@ export default function Tree({ treeData, isShared = false }: TreeProps = {}) {
 
     // 🧮 CÁLCULO DINÁMICO DEL ÁRBOL
     const { layoutBranches, trunkPath, foliageCircles, treeTopY } = useMemo(() => {
-        if (!tree) return { 
-            layoutBranches: [], 
-            trunkPath: '', 
-            foliageCircles: [], 
-            treeTopY: BASE_Y - 400 
+        if (!tree) return {
+            layoutBranches: [],
+            trunkPath: '',
+            foliageCircles: [],
+            treeTopY: BASE_Y - 400
         };
 
         const branches = tree.branches || [];
-        
+
         // ═══════════════════════════════════════════════════════════════════
         // PASO 1: CALCULAR POSICIONES DE RAMAS
         // ═══════════════════════════════════════════════════════════════════
-        
+
         const layoutBranches = branches.map((branch, i) => {
             // Parsear posición si es string
             let branchPosition = branch.position || { x: 0, y: 0 };
@@ -213,7 +251,7 @@ export default function Tree({ treeData, isShared = false }: TreeProps = {}) {
 
             // Si la posición es {0,0}, calcular automáticamente
             const hasCustomPosition = branchPosition.x !== 0 || branchPosition.y !== 0;
-            
+
             let finalPosition: { x: number; y: number };
             if (hasCustomPosition) {
                 finalPosition = branchPosition;
@@ -224,22 +262,22 @@ export default function Tree({ treeData, isShared = false }: TreeProps = {}) {
             // Convertir a coordenadas absolutas del canvas
             const endX = CENTER_X + finalPosition.x;
             const endY = BASE_Y + finalPosition.y; // y negativo sube
-            
+
             // Punto de inicio de la rama (en el tronco)
             const startX = CENTER_X;
             const startY = endY + 40; // Un poco más abajo que el destino para curva natural
-            
+
             // Generar path curvo con Bézier
             const path = generateCurvedBranchPath(startX, startY, endX, endY);
-            
+
             // Contar frutos
             const fruitCount = tree.fruits.filter(f => f.branchId === branch.id).length;
-            
-            return { 
-                ...branch, 
-                x: endX, 
-                y: endY, 
-                path, 
+
+            return {
+                ...branch,
+                x: endX,
+                y: endY,
+                path,
                 fruitCount,
                 startY // Guardamos para calcular el tronco
             };
@@ -248,27 +286,32 @@ export default function Tree({ treeData, isShared = false }: TreeProps = {}) {
         // ═══════════════════════════════════════════════════════════════════
         // PASO 2: CALCULAR ALTURA DINÁMICA DEL TRONCO
         // ═══════════════════════════════════════════════════════════════════
-        
-        let treeTopY = BASE_Y - 500; // Mínimo por defecto
-        
+
+        let treeTopY = BASE_Y - 600; // Mínimo por defecto más generoso
+
         if (layoutBranches.length > 0) {
             // Encontrar la rama MÁS ALTA (Y más pequeño)
-            const highestBranchY = Math.min(...layoutBranches.map(b => b.startY));
-            
-            // El tronco debe llegar 200px más arriba que la rama más alta
-            treeTopY = highestBranchY - 200;
+            // 🔧 CORRECCIÓN: Usar endY en lugar de startY para cálculo más preciso
+            const highestBranchY = Math.min(...layoutBranches.map(b => b.y));
+
+            // El tronco debe llegar 300px más arriba que la rama más alta (aumentado de 200px)
+            treeTopY = highestBranchY - 300;
+
+            // Asegurar mínimo visual incluso con pocas ramas
+            const minTopY = BASE_Y - 600;
+            treeTopY = Math.min(treeTopY, minTopY);
         }
 
         // ═══════════════════════════════════════════════════════════════════
         // PASO 3: GENERAR TRONCO DINÁMICO
         // ═══════════════════════════════════════════════════════════════════
-        
+
         const trunkPath = generateDynamicTrunkPath(CENTER_X, BASE_Y, treeTopY);
 
         // ═══════════════════════════════════════════════════════════════════
         // PASO 4: GENERAR FOLLAJE SUTIL
         // ═══════════════════════════════════════════════════════════════════
-        
+
         const foliageCircles = layoutBranches.flatMap((branch, i) => {
             const isLeft = branch.x < CENTER_X;
             return [
@@ -290,6 +333,23 @@ export default function Tree({ treeData, isShared = false }: TreeProps = {}) {
         return { layoutBranches, trunkPath, foliageCircles, treeTopY };
     }, [tree]);
 
+    const handleMoveBranch = async (branch: LayoutBranchType, direction: 'up' | 'down') => {
+        const step = 50;
+        // Calcular nueva posición relativa a la BASE y CENTRO
+        // Logica actual de display: y = BASE_Y + pos.y -> pos.y = y - BASE_Y
+        // Queremos subir (y menor) o bajar (y mayor)
+        const currentAbsY = branch.y;
+        const newAbsY = currentAbsY + (direction === 'up' ? -step : step);
+
+        // Convertir a coordenadas relativas guardadas
+        const relativeY = newAbsY - BASE_Y;
+        const relativeX = branch.x - CENTER_X;
+
+        await updateBranch(branch.id, {
+            position: { x: relativeX, y: relativeY } as any
+        });
+    };
+
     return (
         <View style={styles.container}>
             {isLoading && (
@@ -304,6 +364,7 @@ export default function Tree({ treeData, isShared = false }: TreeProps = {}) {
                 zoomStep={0.5}
                 initialZoom={0.6}
                 bindToBorders={false}
+                {...({ zoomEnabled: !isEditMode, panEnabled: !isEditMode } as any)}
                 style={styles.zoomView}
                 contentWidth={CANVAS_WIDTH}
                 contentHeight={CANVAS_HEIGHT}
@@ -363,14 +424,31 @@ export default function Tree({ treeData, isShared = false }: TreeProps = {}) {
                             x={b.x}
                             y={b.y}
                             fruitCount={b.fruitCount}
-                            onPress={(branch) => router.push({ 
-                                pathname: '/branch-details', 
-                                params: { id: branch.id } 
+                            isEditMode={isEditMode}
+                            onMove={handleMoveBranch}
+                            onPress={(branch) => router.push({
+                                pathname: '/branch-details',
+                                params: { id: branch.id }
                             })}
                         />
                     ))}
                 </View>
             </ReactNativeZoomableView>
+
+            {/* BOTÓN MODO EDICIÓN (Solo si soy dueño) */}
+            {!isShared && (
+                <TouchableOpacity
+                    style={[styles.editButton, isEditMode && styles.editButtonActive]}
+                    onPress={() => setIsEditMode(!isEditMode)}
+                >
+                    {isEditMode ? (
+                        <Check size={24} color="#FFF" />
+                    ) : (
+                        <Edit3 size={24} color={colors.primary} />
+                    )}
+                    {isEditMode && <Text style={styles.editButtonText}>Terminar</Text>}
+                </TouchableOpacity>
+            )}
 
             {/* PANEL INFERIOR: Raíces Familiares (solo si no es árbol compartido) */}
             {!isShared && (
@@ -386,9 +464,9 @@ export default function Tree({ treeData, isShared = false }: TreeProps = {}) {
                                 <RootCard
                                     key={root.id}
                                     root={root}
-                                    onPress={(r) => router.push({ 
-                                        pathname: '/root-details', 
-                                        params: { id: r.id } 
+                                    onPress={(r) => router.push({
+                                        pathname: '/root-details',
+                                        params: { id: r.id }
                                     })}
                                 />
                             ))
@@ -430,20 +508,20 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: DESIGN_THEME.bg
     },
-    zoomView: { 
-        width: '100%', 
-        height: '100%' 
+    zoomView: {
+        width: '100%',
+        height: '100%'
     },
-    canvas: { 
-        width: CANVAS_WIDTH, 
-        height: CANVAS_HEIGHT 
+    canvas: {
+        width: CANVAS_WIDTH,
+        height: CANVAS_HEIGHT
     },
     loaderContainer: {
-        position: 'absolute', 
-        top: 100, 
-        left: 0, 
-        right: 0, 
-        zIndex: 100, 
+        position: 'absolute',
+        top: 100,
+        left: 0,
+        right: 0,
+        zIndex: 100,
         alignItems: 'center',
     },
 
@@ -601,4 +679,55 @@ const styles = StyleSheet.create({
         fontWeight: 'bold',
         fontSize: 13
     },
+
+    // ✏️ Botones de Edición
+    editButton: {
+        position: 'absolute',
+        top: 60,
+        right: 20,
+        width: 50,
+        height: 50,
+        borderRadius: 25,
+        backgroundColor: '#FFF',
+        justifyContent: 'center',
+        alignItems: 'center',
+        elevation: 5,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+        zIndex: 200,
+    },
+    editButtonActive: {
+        backgroundColor: colors.primary,
+        width: 'auto',
+        paddingHorizontal: 20,
+        flexDirection: 'row',
+        gap: 8,
+    },
+    editButtonText: {
+        color: '#FFF',
+        fontWeight: 'bold',
+    },
+    branchCircleEditing: {
+        borderWidth: 3,
+        borderColor: colors.primary,
+        transform: [{ scale: 1.1 }]
+    },
+    arrowButton: {
+        position: 'absolute',
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 20,
+    },
+    arrowUp: {
+        top: -45, // Arriba de la burbuja
+    },
+    arrowDown: {
+        bottom: -45, // Debajo de la burbuja
+    }
 });

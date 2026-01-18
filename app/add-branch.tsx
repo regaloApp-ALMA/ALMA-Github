@@ -7,11 +7,32 @@ import categories from '@/constants/categories';
 import { useThemeStore } from '@/stores/themeStore';
 import { X } from 'lucide-react-native';
 
+// Sugerencias vibrantes y variadas
 const branchSuggestions = [
-  { id: 'deportes', name: 'Deportes', description: 'Deportes que has practicado' },
   { id: 'viajes', name: 'Viajes', description: 'Lugares que has visitado' },
-  { id: 'familia', name: 'Familia', description: 'Momentos familiares' },
-  { id: 'hobbies', name: 'Hobbies', description: 'Pasatiempos favoritos' },
+  { id: 'logros', name: 'Logros', description: 'Metas alcanzadas' },
+  { id: 'mascotas', name: 'Mascotas', description: 'Amigos peludos' },
+  { id: 'amigos', name: 'Amigos', description: 'Amistades duraderas' },
+  { id: 'recetas', name: 'Recetas', description: 'Sabores familiares' },
+  { id: 'hobbies', name: 'Pasatiempos', description: 'Lo que amas hacer' },
+  { id: 'casa', name: 'Casa', description: 'Hogar dulce hogar' },
+  { id: 'carrera', name: 'Carrera', description: 'Vida profesional' },
+  { id: 'deportes', name: 'Deportes', description: 'Actividad física' },
+  { id: 'musica', name: 'Música', description: 'Conciertos y canciones' },
+  { id: 'lectura', name: 'Libros', description: 'Mundos literarios' },
+  { id: 'arte', name: 'Arte', description: 'Creatividad visual' },
+  { id: 'familia', name: 'Familia', description: 'Reuniones y lazos' },
+  { id: 'salud', name: 'Salud', description: 'Bienestar y cuidado' },
+  { id: 'proyectos', name: 'Proyectos', description: 'Ideas en construcción' },
+  { id: 'momentos', name: 'Momentos', description: 'Instantes únicos' },
+];
+
+// Grid de colores modernos
+const MODERN_COLORS = [
+  '#EF5350', '#EC407A', '#AB47BC', '#7E57C2',
+  '#5C6BC0', '#42A5F5', '#29B6F6', '#26C6DA',
+  '#26A69A', '#66BB6A', '#9CCC65', '#D4E157',
+  '#FFEE58', '#FFCA28', '#FFA726', '#FF7043'
 ];
 
 const styles = StyleSheet.create({
@@ -25,8 +46,8 @@ const styles = StyleSheet.create({
   suggestionsContainer: { backgroundColor: '#FFF', borderRadius: 8, marginTop: 8, padding: 12, borderWidth: 1, borderColor: colors.border, elevation: 2 },
   suggestionsContainerDark: { backgroundColor: '#222', borderColor: '#444' },
   categoriesContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  categoryItem: { borderWidth: 1, borderColor: colors.border, borderRadius: 20, paddingVertical: 8, paddingHorizontal: 16, backgroundColor: '#FFF' },
-  categoryText: { fontSize: 14, color: colors.text },
+  categoryItem: { width: 44, height: 44, borderRadius: 22, marginRight: 10, marginBottom: 10, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: 'transparent' },
+  categoryItemSelected: { borderColor: colors.text, borderRadius: 10 },
   createButton: { backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 20 },
   createButtonDisabled: { backgroundColor: colors.gray },
   createButtonText: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
@@ -34,8 +55,7 @@ const styles = StyleSheet.create({
 
 export default function AddBranchScreen() {
   const [name, setName] = useState('');
-  const [customCategory, setCustomCategory] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState(categories[0].id);
+  const [selectedColor, setSelectedColor] = useState(MODERN_COLORS[5]); // Default un azul bonito
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showCustomCategory, setShowCustomCategory] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -53,21 +73,13 @@ export default function AddBranchScreen() {
 
     setIsLoading(true);
     try {
-      let finalCategoryId = selectedCategory;
-      let finalColor = colors.primary;
-
-      if (showCustomCategory && customCategory.trim()) {
-        finalCategoryId = customCategory.trim().toLowerCase().replace(/\s+/g, '_');
-        finalColor = categories[Math.floor(Math.random() * categories.length)].color;
-      } else {
-        const category = categories.find(c => c.id === selectedCategory);
-        if (category) finalColor = category.color;
-      }
+      // Usar nombre como ID de categoría
+      const finalCategoryId = name.trim().toLowerCase().replace(/\s+/g, '_');
 
       await addBranch({
         name: name.trim(),
         categoryId: finalCategoryId,
-        color: finalColor,
+        color: selectedColor,
         position: { x: 0, y: 0 }
       });
 
@@ -88,6 +100,7 @@ export default function AddBranchScreen() {
       );
     } catch (error: any) {
       Alert.alert('Error', error.message || 'No se pudo crear la rama');
+    } finally {
       setIsLoading(false);
     }
   };
@@ -134,20 +147,20 @@ export default function AddBranchScreen() {
         </View>
 
         <View style={styles.formGroup}>
-          <Text style={[styles.label, isDarkMode && styles.labelDark]}>Categoría (Color)</Text>
+          <Text style={[styles.label, isDarkMode && styles.labelDark]}>Elige un color</Text>
           <View style={styles.categoriesContainer}>
-            {categories.map(category => (
+            {MODERN_COLORS.map(color => (
               <TouchableOpacity
-                key={category.id}
+                key={color}
                 style={[
                   styles.categoryItem,
-                  selectedCategory === category.id && { backgroundColor: category.color, borderColor: category.color },
+                  { backgroundColor: color },
+                  selectedColor === color && styles.categoryItemSelected,
+                  selectedColor === color && { borderColor: isDarkMode ? '#FFF' : '#333' }
                 ]}
-                onPress={() => { setSelectedCategory(category.id); Keyboard.dismiss(); }}
+                onPress={() => { setSelectedColor(color); Keyboard.dismiss(); }}
               >
-                <Text style={[styles.categoryText, selectedCategory === category.id && { color: '#FFF', fontWeight: 'bold' }]}>
-                  {category.name}
-                </Text>
+                {selectedColor === color && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#FFF' }} />}
               </TouchableOpacity>
             ))}
           </View>
