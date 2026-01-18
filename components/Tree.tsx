@@ -4,9 +4,11 @@ import { ReactNativeZoomableView } from '@openspacelabs/react-native-zoomable-vi
 import Svg, { Path, Defs, LinearGradient, Stop, Circle } from 'react-native-svg';
 import { useTreeStore } from '@/stores/treeStore';
 import { BranchType, RootType, TreeType } from '@/types/tree';
-import { useRouter } from 'expo-router';
+import { BranchType, RootType, TreeType } from '@/types/tree';
+import { useRouter, useFocusEffect } from 'expo-router';
 import colors from '@/constants/colors';
 import { Sprout, Edit3, Check, ChevronUp, ChevronDown } from 'lucide-react-native';
+import { useCallback, useRef } from 'react';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -201,6 +203,25 @@ export default function Tree({ treeData, isShared = false }: TreeProps = {}) {
     const { tree: storeTree, isLoading, fetchMyTree, updateBranch } = useTreeStore();
     const router = useRouter();
     const [isEditMode, setIsEditMode] = useState(false);
+    const zoomRef = useRef<any>(null);
+
+    // 🎯 AUTO-CENTRADO AL ENFOCAR
+    useFocusEffect(
+        useCallback(() => {
+            // Pequeño timeout para asegurar que la UI montó y evitar conflictos
+            const timer = setTimeout(() => {
+                if (zoomRef.current) {
+                    try {
+                        zoomRef.current.zoomTo(0.6); // Zoom inicial
+                        zoomRef.current.moveTo(0, 300); // 300 para centrar el tronco bajo
+                    } catch (e) {
+                        console.warn('Error resetting zoom:', e);
+                    }
+                }
+            }, 100);
+            return () => clearTimeout(timer);
+        }, [])
+    );
 
     // Usar el árbol pasado como prop o el del store
     const tree = treeData || storeTree;
@@ -249,13 +270,21 @@ export default function Tree({ treeData, isShared = false }: TreeProps = {}) {
                 }
             }
 
-            // Si la posición es {0,0}, calcular automáticamente
-            const hasCustomPosition = branchPosition.x !== 0 || branchPosition.y !== 0;
+            // Validación ROBUSTA de coordenadas
+            let validPosition = false;
+            if (branchPosition && typeof branchPosition.x === 'number' && typeof branchPosition.y === 'number') {
+                if (!isNaN(branchPosition.x) && !isNaN(branchPosition.y)) {
+                    validPosition = true;
+                }
+            }
 
             let finalPosition: { x: number; y: number };
-            if (hasCustomPosition) {
+            const isZeroPos = branchPosition.x === 0 && branchPosition.y === 0;
+
+            if (validPosition && !isZeroPos) {
                 finalPosition = branchPosition;
             } else {
+                // FALLBACK: Si no hay posición válida o es 0,0, usar auto-layout
                 finalPosition = calculateAutoPosition(i, branches.length);
             }
 
@@ -297,9 +326,14 @@ export default function Tree({ treeData, isShared = false }: TreeProps = {}) {
             // El tronco debe llegar 300px más arriba que la rama más alta (aumentado de 200px)
             treeTopY = highestBranchY - 300;
 
-            // Asegurar mínimo visual incluso con pocas ramas
-            const minTopY = BASE_Y - 600;
-            treeTopY = Math.min(treeTopY, minTopY);
+            // El tronco debe llegar 300px más arriba que la rama más alta (aumentado de 200px)
+            treeTopY = highestBranchY - 300;
+        }
+
+        // SIEMPRE asegurar altura mínima visual del tronco, haya o no ramas
+        const minTopY = BASE_Y - 600;
+        if (treeTopY > minTopY) {
+            treeTopY = minTopY;
         }
 
         // ═══════════════════════════════════════════════════════════════════
@@ -359,6 +393,7 @@ export default function Tree({ treeData, isShared = false }: TreeProps = {}) {
             )}
 
             <ReactNativeZoomableView
+                ref={zoomRef}
                 maxZoom={1.5}
                 minZoom={0.3}
                 zoomStep={0.5}
@@ -435,18 +470,18 @@ export default function Tree({ treeData, isShared = false }: TreeProps = {}) {
                 </View>
             </ReactNativeZoomableView>
 
-            {/* BOTÓN MODO EDICIÓN (Solo si soy dueño) */}
+            {/* BOTÓN MODO EDICIÓN (Discreto y Esquina) */}
             {!isShared && (
                 <TouchableOpacity
                     style={[styles.editButton, isEditMode && styles.editButtonActive]}
                     onPress={() => setIsEditMode(!isEditMode)}
                 >
                     {isEditMode ? (
-                        <Check size={24} color="#FFF" />
+                        <Check size={18} color="#FFF" />
                     ) : (
-                        <Edit3 size={24} color={colors.primary} />
+                        <Edit3 size={18} color={colors.primary} />
                     )}
-                    {isEditMode && <Text style={styles.editButtonText}>Terminar</Text>}
+                    {isEditMode && <Text style={styles.editButtonText}>Listo</Text>}
                 </TouchableOpacity>
             )}
 
@@ -683,11 +718,11 @@ const styles = StyleSheet.create({
     // ✏️ Botones de Edición
     editButton: {
         position: 'absolute',
-        top: 60,
-        right: 20,
-        width: 50,
-        height: 50,
-        borderRadius: 25,
+        top: 10,  // Más arriba
+        right: 10, // Más a la esquina
+        width: 36, // Más pequeño
+        height: 36,
+        borderRadius: 18,
         backgroundColor: '#FFF',
         justifyContent: 'center',
         alignItems: 'center',
