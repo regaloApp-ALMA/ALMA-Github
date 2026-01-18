@@ -3,11 +3,12 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ActivityInd
 import { Stack, useRouter } from 'expo-router';
 import colors from '@/constants/colors';
 import { useUserStore } from '@/stores/userStore';
-import { Chrome } from 'lucide-react-native';
+import { Chrome, Eye, EyeOff } from 'lucide-react-native';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const { login, loginWithGoogle, isLoading, isAuthenticated } = useUserStore();
   const router = useRouter();
 
@@ -37,15 +38,15 @@ export default function LoginScreen() {
       }, 300);
     } catch (error: any) {
       let errorMessage = error.message || 'Credenciales incorrectas';
-      
-      if (error.message?.includes('Invalid login credentials') || 
-          error.message?.includes('Invalid credentials')) {
+
+      if (error.message?.includes('Invalid login credentials') ||
+        error.message?.includes('Invalid credentials')) {
         errorMessage = '❌ Email o contraseña incorrectos. Por favor, verifica tus credenciales.';
-      } else if (error.message?.includes('User not found') || 
-                 error.message?.includes('does not exist')) {
+      } else if (error.message?.includes('User not found') ||
+        error.message?.includes('does not exist')) {
         errorMessage = '❌ Esta cuenta no existe. Por favor, regístrate primero.';
       }
-      
+
       Alert.alert('Error de inicio de sesión', errorMessage);
     }
   };
@@ -109,14 +110,27 @@ export default function LoginScreen() {
 
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Contraseña</Text>
-              <TextInput
-                style={styles.input}
-                value={password}
-                onChangeText={setPassword}
-                placeholder="••••••••"
-                placeholderTextColor={colors.gray}
-                secureTextEntry
-              />
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="••••••••"
+                  placeholderTextColor={colors.gray}
+                  secureTextEntry={!showPassword}
+                />
+                <TouchableOpacity
+                  style={styles.eyeIcon}
+                  onPress={() => setShowPassword(!showPassword)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  {showPassword ? (
+                    <EyeOff size={20} color={colors.gray} />
+                  ) : (
+                    <Eye size={20} color={colors.gray} />
+                  )}
+                </TouchableOpacity>
+              </View>
             </View>
 
             <TouchableOpacity
@@ -187,6 +201,9 @@ const styles = StyleSheet.create({
   inputContainer: { marginBottom: 20 },
   label: { fontSize: 14, color: colors.textLight, marginBottom: 8, fontWeight: '600' },
   input: { backgroundColor: colors.white, borderRadius: 12, padding: 16, fontSize: 16, borderWidth: 1, borderColor: colors.border },
+  passwordContainer: { position: 'relative', width: '100%' },
+  passwordInput: { backgroundColor: colors.white, borderRadius: 12, padding: 16, paddingRight: 50, fontSize: 16, borderWidth: 1, borderColor: colors.border },
+  eyeIcon: { position: 'absolute', right: 16, top: 16, zIndex: 10 },
   loginButton: { backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 18, alignItems: 'center', marginTop: 10, shadowColor: colors.primary, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 8, elevation: 4 },
   loginButtonText: { color: colors.white, fontSize: 18, fontWeight: 'bold' },
   orContainer: { flexDirection: 'row', alignItems: 'center', marginVertical: 30 },

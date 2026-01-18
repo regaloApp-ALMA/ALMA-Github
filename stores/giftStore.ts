@@ -80,16 +80,24 @@ export const useGiftStore = create<GiftState>((set, get) => ({
         .eq('email', recipientEmail)
         .single();
 
-      const { error } = await supabase.from('gifts').insert({
+      const giftData: any = {
         sender_id: session.user.id,
         recipient_email: recipientEmail,
-        recipient_id: recipientUser?.id || null, // Si existe, lo vinculamos
+        recipient_id: recipientUser?.id || null,
         type,
         message,
-        content_data: content, // Guardamos el JSON del recuerdo/rama
+        content_data: content, // Guardamos el JSON como fallback
         unlock_date: unlockDate ? new Date(unlockDate).toISOString() : null,
         status: 'pending'
-      });
+      };
+
+      // LIVE UPDATES: Si el regalo es un fruto existente, guardar fruit_id
+      if (type === 'fruit' && content?.id) {
+        giftData.fruit_id = content.id;
+        console.log('📌 Gift: Guardando fruit_id para live updates:', content.id);
+      }
+
+      const { error } = await supabase.from('gifts').insert(giftData);
 
       if (error) throw error;
       set({ isLoading: false });
@@ -142,7 +150,7 @@ export const useGiftStore = create<GiftState>((set, get) => ({
             .select('id')
             .eq('id', gift.contentData.branchId)
             .single();
-          
+
           if (originalBranch) {
             // Verificar si esa rama pertenece a mi árbol o está compartida
             const { data: myBranch } = await supabase
@@ -151,7 +159,7 @@ export const useGiftStore = create<GiftState>((set, get) => ({
               .eq('tree_id', myTree.id)
               .eq('id', gift.contentData.branchId)
               .single();
-            
+
             if (myBranch) {
               targetBranchId = myBranch.id;
             }
@@ -181,7 +189,7 @@ export const useGiftStore = create<GiftState>((set, get) => ({
               })
               .select('id')
               .single();
-            
+
             if (newBranch) {
               targetBranchId = newBranch.id;
             }
@@ -198,7 +206,7 @@ export const useGiftStore = create<GiftState>((set, get) => ({
             .eq('tree_id', myTree.id)
             .limit(1)
             .single();
-          
+
           if (firstBranch) {
             targetBranchId = firstBranch.id;
           }

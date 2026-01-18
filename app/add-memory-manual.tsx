@@ -48,10 +48,15 @@ export default function AddMemoryManualScreen() {
       if (!result.canceled && result.assets) {
         // 📸 OPTIMIZACIÓN: Procesar y validar cada asset
         const processedUris: string[] = [];
-        
+
         for (const asset of result.assets) {
           try {
-            const processedUri = await processMediaAsset(asset, 'memory');
+            // Fix TypeScript type issue: normalize duration (handle null)
+            const processedUri = await processMediaAsset({
+              uri: asset.uri,
+              type: asset.type,
+              duration: asset.duration ?? undefined // Convert null to undefined
+            }, 'memory');
             if (processedUri) {
               processedUris.push(processedUri);
             }
@@ -60,7 +65,7 @@ export default function AddMemoryManualScreen() {
             // Continuar con el siguiente asset si uno falla
           }
         }
-        
+
         if (processedUris.length > 0) {
           setMediaUrls(prev => [...prev, ...processedUris]);
           console.log('📸 Media procesado y validado:', processedUris.length);
@@ -95,18 +100,18 @@ export default function AddMemoryManualScreen() {
     try {
       // 📸 OPTIMIZACIÓN: Subir fotos/videos SOLO al guardar
       let uploadedUrls: string[] = [];
-      
+
       if (mediaUrls.length > 0) {
         setIsUploading(true);
         try {
           // Filtrar URIs locales (file://) y subirlas
           const localUris = mediaUrls.filter(uri => uri.startsWith('file://') || uri.startsWith('content://'));
           const alreadyUploaded = mediaUrls.filter(uri => !uri.startsWith('file://') && !uri.startsWith('content://'));
-          
+
           // Subir solo las que son locales
           if (localUris.length > 0) {
             console.log('📤 Subiendo', localUris.length, 'archivos al storage...');
-            const uploadPromises = localUris.map(uri => 
+            const uploadPromises = localUris.map(uri =>
               uploadMedia(uri, user.id, 'memories')
             );
             const uploadResults = await Promise.all(uploadPromises);
@@ -137,10 +142,17 @@ export default function AddMemoryManualScreen() {
         position: { x: 0, y: 0 }
       } as any);
 
-      // Redirigir al detalle del fruto recién creado
-      router.replace({ pathname: '/fruit-details', params: { id: fruitId } });
+      // Mostrar mensaje de éxito
+      Alert.alert(
+        '✅ Recuerdo guardado',
+        'Tu recuerdo ha sido plantado en el árbol exitosamente.',
+        [{
+          text: 'Ver recuerdo',
+          onPress: () => router.replace({ pathname: '/fruit-details', params: { id: fruitId } })
+        }]
+      );
     } catch (error: any) {
-      Alert.alert('Error', error.message);
+      Alert.alert('Error', error.message || 'No se pudo guardar el recuerdo');
     } finally {
       setIsSaving(false);
     }
@@ -206,7 +218,7 @@ export default function AddMemoryManualScreen() {
           <Text style={[styles.label, isDarkMode && styles.textWhite]}>
             Fotos y Videos {mediaUrls.length > 0 && `(${mediaUrls.length})`}
           </Text>
-          
+
           {mediaUrls.length > 0 ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mediaScroll}>
               {mediaUrls.map((url, index) => (
@@ -219,8 +231,8 @@ export default function AddMemoryManualScreen() {
                   ) : (
                     <Image source={{ uri: url }} style={styles.mediaPreview} />
                   )}
-                  <TouchableOpacity 
-                    style={styles.removeMediaBtn} 
+                  <TouchableOpacity
+                    style={styles.removeMediaBtn}
                     onPress={() => removeMedia(index)}
                   >
                     <X size={16} color="#FFF" />
@@ -230,8 +242,8 @@ export default function AddMemoryManualScreen() {
             </ScrollView>
           ) : null}
 
-          <TouchableOpacity 
-            style={[styles.uploadBox, isDarkMode && styles.uploadBoxDark]} 
+          <TouchableOpacity
+            style={[styles.uploadBox, isDarkMode && styles.uploadBoxDark]}
             onPress={handlePickMedia}
             disabled={isUploading}
           >
@@ -277,15 +289,15 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row' },
   chip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#DDD', marginRight: 8, backgroundColor: '#FFF' },
   chipText: { fontWeight: '600', color: colors.text },
-  uploadBox: { 
-    height: 150, 
-    borderWidth: 2, 
-    borderColor: '#E0E0E0', 
-    borderStyle: 'dashed', 
-    borderRadius: 12, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    backgroundColor: '#FFF' 
+  uploadBox: {
+    height: 150,
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFF'
   },
   uploadBoxDark: { backgroundColor: '#2C2C2C', borderColor: '#444' },
   uploadText: { color: colors.gray, marginTop: 8, fontWeight: '600' },
@@ -293,24 +305,24 @@ const styles = StyleSheet.create({
   mediaScroll: { flexDirection: 'row', marginBottom: 12 },
   mediaItem: { position: 'relative', marginRight: 12 },
   mediaPreview: { width: 100, height: 100, borderRadius: 12 },
-  videoContainer: { 
-    width: 100, 
-    height: 100, 
-    borderRadius: 12, 
-    backgroundColor: '#333', 
-    justifyContent: 'center', 
-    alignItems: 'center' 
+  videoContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 12,
+    backgroundColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center'
   },
   videoLabel: { color: colors.white, fontSize: 12, marginTop: 4 },
-  removeMediaBtn: { 
-    position: 'absolute', 
-    top: -8, 
-    right: -8, 
-    backgroundColor: colors.error, 
-    width: 24, 
-    height: 24, 
-    borderRadius: 12, 
-    justifyContent: 'center', 
+  removeMediaBtn: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: colors.error,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#FFF'

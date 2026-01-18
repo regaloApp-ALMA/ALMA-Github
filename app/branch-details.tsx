@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ActivityIn
 import { useLocalSearchParams, Stack, useRouter } from 'expo-router';
 import { useTreeStore } from '@/stores/treeStore';
 import colors from '@/constants/colors';
-import { Plus, Share2, Lock, Trash2, Unlock } from 'lucide-react-native';
+import { Plus, Share2, Lock, Trash2, Unlock, Edit } from 'lucide-react-native';
 import { useThemeStore } from '@/stores/themeStore';
 import { useUserStore } from '@/stores/userStore';
 import { supabase } from '@/lib/supabase';
@@ -85,25 +85,25 @@ export default function BranchDetailsScreen() {
 
   // Determinar qué datos usar
   const branch = activeTree?.branches.find(b => b.id === id) || branchData;
-  const branchFruits = activeTree 
+  const branchFruits = activeTree
     ? activeTree.fruits.filter(f => {
-        if (f.branchId === id) {
-          // Si es el dueño, ver todos los frutos. Si no, solo los públicos
-          return isOwner || (f.isPublic !== undefined ? f.isPublic : true);
-        }
-        return false;
-      })
+      if (f.branchId === id) {
+        // Si es el dueño, ver todos los frutos. Si no, solo los públicos
+        return isOwner || (f.isPublic !== undefined ? f.isPublic : true);
+      }
+      return false;
+    })
     : fruitsData.map((f: any) => ({
-        id: f.id,
-        title: f.title,
-        description: f.description || '',
-        branchId: f.branch_id,
-        mediaUrls: f.media_urls || [],
-        createdAt: f.created_at,
-        isShared: f.is_shared || false,
-        isPublic: f.is_public !== undefined ? f.is_public : true,
-        position: f.position || { x: 0, y: 0 },
-      }));
+      id: f.id,
+      title: f.title,
+      description: f.description || '',
+      branchId: f.branch_id,
+      mediaUrls: f.media_urls || [],
+      createdAt: f.created_at,
+      isShared: f.is_shared || false,
+      isPublic: f.is_public !== undefined ? f.is_public : true,
+      position: f.position || { x: 0, y: 0 },
+    }));
 
   const finalIsOwner = activeTree ? isOwner : (branchData?.tree?.owner_id === user?.id);
 
@@ -123,12 +123,12 @@ export default function BranchDetailsScreen() {
   const handleDeleteBranch = () => {
     console.log("🗑️ BOTÓN PULSADO - handleDeleteBranch");
     console.log("🗑️ ID de rama:", id);
-    
+
     if (isDeleting) {
       console.log('⚠️ Ya se está borrando, ignorando clic');
       return;
     }
-    
+
     // Solución robusta: usar requestAnimationFrame para asegurar que se ejecute en el siguiente frame
     if (Platform.OS === 'web') {
       // En web, usar window.confirm como fallback si Alert no funciona
@@ -151,32 +151,32 @@ export default function BranchDetailsScreen() {
       }
       return;
     }
-    
+
     // Para móvil, usar Alert normal
     try {
       Alert.alert(
         "¿Eliminar Rama?",
         "Esta acción es irreversible y borrará todo el contenido asociado.",
         [
-          { 
-            text: "Cancelar", 
+          {
+            text: "Cancelar",
             style: "cancel",
             onPress: () => console.log('❌ Cancelado por usuario')
           },
-          { 
-            text: "Eliminar", 
-            style: "destructive", 
+          {
+            text: "Eliminar",
+            style: "destructive",
             onPress: async () => {
               console.log('✅ Usuario confirmó borrado de rama');
               setIsDeleting(true);
-              
+
               try {
                 await deleteBranch(id);
                 console.log('✅ Rama borrada exitosamente en DB');
-                
+
                 // Recargar árbol
                 await fetchMyTree();
-                
+
                 // Navegación agresiva
                 router.dismissAll();
                 router.replace('/(tabs)/tree');
@@ -216,7 +216,7 @@ export default function BranchDetailsScreen() {
   // --- LÓGICA DE PRIVACIDAD ---
   const togglePrivacy = async () => {
     if (!finalIsOwner) return; // Solo el dueño puede cambiar privacidad
-    
+
     setIsUpdating(true);
     const currentValue = branch.isShared || branch.is_shared || false;
     const newValue = !currentValue;
@@ -227,12 +227,12 @@ export default function BranchDetailsScreen() {
         .eq('id', id);
 
       if (error) throw error;
-      
+
       // Actualizar estado local
       if (branchData) {
         setBranchData({ ...branchData, is_shared: newValue });
       }
-      
+
       await fetchMyTree(); // Recargar para ver el cambio
     } catch (e: any) {
       Alert.alert("Error", e.message);
@@ -249,10 +249,10 @@ export default function BranchDetailsScreen() {
           headerStyle: { backgroundColor: branch.color || colors.primary },
           headerTintColor: colors.white,
           headerRight: () => finalIsOwner ? (
-            <TouchableOpacity 
-              onPress={handleDeleteBranch} 
-              style={{ 
-                marginRight: 10, 
+            <TouchableOpacity
+              onPress={handleDeleteBranch}
+              style={{
+                marginRight: 10,
                 opacity: isDeleting ? 0.5 : 1,
                 zIndex: 1000,
                 padding: 8,
@@ -303,7 +303,7 @@ export default function BranchDetailsScreen() {
                 {finalIsOwner ? 'Rama vacía' : 'Sin recuerdos compartidos'}
               </Text>
               <Text style={[styles.emptyStateText, isDarkMode && styles.textLight]}>
-                {finalIsOwner 
+                {finalIsOwner
                   ? 'Añade tu primer recuerdo para ver crecer esta rama.'
                   : 'Esta rama aún no tiene recuerdos compartidos.'}
               </Text>
@@ -334,7 +334,7 @@ export default function BranchDetailsScreen() {
             </View>
           )}
         </ScrollView>
-        
+
         {/* Botón Añadir Recuerdo siempre visible */}
         {finalIsOwner && (
           <View style={styles.fixedAddButton}>
@@ -359,6 +359,7 @@ const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { paddingTop: 10, paddingBottom: 20, borderBottomLeftRadius: 24, borderBottomRightRadius: 24 },
   headerContent: { paddingHorizontal: 20 },
+  headerButton: { padding: 8, justifyContent: 'center', alignItems: 'center' },
   branchInfo: { fontSize: 14, color: 'rgba(255,255,255,0.9)', marginBottom: 10 },
   controlsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   privacyButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.2)', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 20 },

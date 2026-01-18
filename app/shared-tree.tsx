@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { View, StyleSheet, Text, ActivityIndicator, Alert } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import Tree from '@/components/Tree';
 import { useTreeStore } from '@/stores/treeStore';
 import colors from '@/constants/colors';
@@ -8,12 +9,30 @@ import { useThemeStore } from '@/stores/themeStore';
 
 export default function SharedTreeScreen() {
   const router = useRouter();
-  const { sharedTree, isLoading, error } = useTreeStore();
+  const params = useLocalSearchParams<{ treeId?: string; relativeId?: string }>();
+  const { sharedTree, isLoading, error, fetchSharedTree } = useTreeStore();
   const { theme } = useThemeStore();
   const isDarkMode = theme === 'dark';
 
+  // Live Updates: Refetch shared tree data when screen gains focus
+  useFocusEffect(
+    React.useCallback(() => {
+      if (sharedTree) {
+        // Refetch the shared tree to get latest data
+        const treeIdToFetch = params.treeId || sharedTree.id;
+        const relativeIdToFetch = params.relativeId;
+
+        if (treeIdToFetch) {
+          fetchSharedTree(treeIdToFetch, true); // true = isTreeId
+        } else if (relativeIdToFetch) {
+          fetchSharedTree(relativeIdToFetch, false); // false = isRelativeId
+        }
+      }
+    }, [sharedTree?.id, params.treeId, params.relativeId])
+  );
+
   useEffect(() => {
-    // Si no hay árbol compartido, volver atrás
+    // If no shared tree, go back
     if (!isLoading && !sharedTree && !error) {
       Alert.alert(
         'Sin árbol compartido',

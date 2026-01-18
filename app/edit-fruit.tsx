@@ -66,10 +66,15 @@ export default function EditFruitScreen() {
       if (!result.canceled && result.assets) {
         // 📸 OPTIMIZACIÓN: Procesar y validar cada asset
         const processedUris: string[] = [];
-        
+
         for (const asset of result.assets) {
           try {
-            const processedUri = await processMediaAsset(asset, 'memory');
+            // Fix TypeScript type issue: normalize duration (handle null)
+            const processedUri = await processMediaAsset({
+              uri: asset.uri,
+              type: asset.type,
+              duration: asset.duration ?? undefined // Convert null to undefined
+            }, 'memory');
             if (processedUri) {
               processedUris.push(processedUri);
             }
@@ -78,7 +83,7 @@ export default function EditFruitScreen() {
             // Continuar con el siguiente asset si uno falla
           }
         }
-        
+
         if (processedUris.length > 0) {
           setMediaUrls(prev => [...prev, ...processedUris]);
           console.log('📸 Media procesado y validado:', processedUris.length);
@@ -118,23 +123,23 @@ export default function EditFruitScreen() {
     try {
       // 📸 LÓGICA COMPLETA: Comparar original vs nuevo y subir solo lo necesario
       let finalMediaUrls: string[] = [];
-      
+
       // Separar URLs locales (file://) de las remotas (https://)
       const localUris = mediaUrls.filter(uri => uri.startsWith('file://') || uri.startsWith('content://'));
       const remoteUrls = mediaUrls.filter(uri => !uri.startsWith('file://') && !uri.startsWith('content://'));
-      
+
       // Subir nuevas imágenes locales
       if (localUris.length > 0) {
         setIsUploading(true);
         try {
           console.log('📤 Subiendo', localUris.length, 'archivos nuevos al storage...');
-          const uploadPromises = localUris.map(uri => 
+          const uploadPromises = localUris.map(uri =>
             uploadMedia(uri, user.id, 'memories')
           );
           const uploadResults = await Promise.all(uploadPromises);
           const validUploaded = uploadResults.filter(url => url !== null) as string[];
           console.log('✅', validUploaded.length, 'archivos nuevos subidos exitosamente');
-          
+
           // Combinar URLs remotas existentes + nuevas subidas
           finalMediaUrls = [...remoteUrls, ...validUploaded];
         } catch (uploadError: any) {
@@ -150,7 +155,7 @@ export default function EditFruitScreen() {
         // No hay nuevas imágenes, solo usar las remotas (que ya están filtradas)
         finalMediaUrls = remoteUrls;
       }
-      
+
       console.log('📊 URLs finales a guardar:', finalMediaUrls.length);
       console.log('📊 URLs originales:', originalMediaUrls.length);
 
@@ -162,9 +167,18 @@ export default function EditFruitScreen() {
         isPublic: isPublic,
       });
 
-      // Navegación forzada al detalle del fruto
-      router.dismissAll();
-      router.replace({ pathname: '/fruit-details', params: { id: id } });
+      // Mostrar mensaje de éxito
+      Alert.alert(
+        '✅ Cambios guardados',
+        'Tu recuerdo ha sido actualizado exitosamente.',
+        [{
+          text: 'Ver recuerdo',
+          onPress: () => {
+            router.dismissAll();
+            router.replace({ pathname: '/fruit-details', params: { id: id } });
+          }
+        }]
+      );
     } catch (error: any) {
       Alert.alert('Error', error.message || 'No se pudo actualizar el recuerdo');
     } finally {
@@ -248,8 +262,8 @@ export default function EditFruitScreen() {
                   {isPublic ? 'Público' : 'Privado'}
                 </Text>
                 <Text style={[styles.privacyHint, isDarkMode && styles.textLight]}>
-                  {isPublic 
-                    ? 'Visible para tus familiares' 
+                  {isPublic
+                    ? 'Visible para tus familiares'
                     : 'Solo tú puedes verlo'}
                 </Text>
               </View>
@@ -267,7 +281,7 @@ export default function EditFruitScreen() {
           <Text style={[styles.label, isDarkMode && styles.textWhite]}>
             Fotos y Videos {mediaUrls.length > 0 && `(${mediaUrls.length})`}
           </Text>
-          
+
           {mediaUrls.length > 0 ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mediaScroll}>
               {mediaUrls.map((url, index) => (
@@ -280,8 +294,8 @@ export default function EditFruitScreen() {
                   ) : (
                     <Image source={{ uri: url }} style={styles.mediaPreview} />
                   )}
-                  <TouchableOpacity 
-                    style={styles.removeMediaBtn} 
+                  <TouchableOpacity
+                    style={styles.removeMediaBtn}
                     onPress={() => removeMedia(index)}
                   >
                     <X size={16} color="#FFF" />
@@ -291,8 +305,8 @@ export default function EditFruitScreen() {
             </ScrollView>
           ) : null}
 
-          <TouchableOpacity 
-            style={[styles.uploadBox, isDarkMode && styles.uploadBoxDark]} 
+          <TouchableOpacity
+            style={[styles.uploadBox, isDarkMode && styles.uploadBoxDark]}
             onPress={handlePickMedia}
             disabled={isSaving}
           >
@@ -340,15 +354,15 @@ const styles = StyleSheet.create({
   chips: { flexDirection: 'row' },
   chip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: '#DDD', marginRight: 8, backgroundColor: '#FFF' },
   chipText: { fontWeight: '600', color: colors.text },
-  uploadBox: { 
-    height: 150, 
-    borderWidth: 2, 
-    borderColor: '#E0E0E0', 
-    borderStyle: 'dashed', 
-    borderRadius: 12, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    backgroundColor: '#FFF' 
+  uploadBox: {
+    height: 150,
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFF'
   },
   uploadBoxDark: { backgroundColor: '#2C2C2C', borderColor: '#444' },
   uploadText: { color: colors.gray, marginTop: 8, fontWeight: '600' },
@@ -356,36 +370,36 @@ const styles = StyleSheet.create({
   mediaScroll: { flexDirection: 'row', marginBottom: 12 },
   mediaItem: { position: 'relative', marginRight: 12 },
   mediaPreview: { width: 100, height: 100, borderRadius: 12 },
-  videoContainer: { 
-    width: 100, 
-    height: 100, 
-    borderRadius: 12, 
-    backgroundColor: '#333', 
-    justifyContent: 'center', 
-    alignItems: 'center' 
+  videoContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 12,
+    backgroundColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center'
   },
   videoLabel: { color: colors.white, fontSize: 12, marginTop: 4 },
-  removeMediaBtn: { 
-    position: 'absolute', 
-    top: -8, 
-    right: -8, 
-    backgroundColor: colors.error, 
-    width: 24, 
-    height: 24, 
-    borderRadius: 12, 
-    justifyContent: 'center', 
+  removeMediaBtn: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: colors.error,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
     borderColor: '#FFF'
   },
-  saveButton: { 
-    backgroundColor: colors.primary, 
+  saveButton: {
+    backgroundColor: colors.primary,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 18, 
-    borderRadius: 12, 
-    marginBottom: 40 
+    padding: 18,
+    borderRadius: 12,
+    marginBottom: 40
   },
   disabled: { opacity: 0.7 },
   saveText: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },

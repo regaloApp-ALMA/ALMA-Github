@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Keyboard, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Keyboard, Alert, ActivityIndicator } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useTreeStore } from '@/stores/treeStore';
 import colors from '@/constants/colors';
@@ -38,6 +38,7 @@ export default function AddBranchScreen() {
   const [selectedCategory, setSelectedCategory] = useState(categories[0].id);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [showCustomCategory, setShowCustomCategory] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const { addBranch, fetchMyTree } = useTreeStore();
   const { theme } = useThemeStore();
@@ -50,30 +51,45 @@ export default function AddBranchScreen() {
       return;
     }
 
-    let finalCategoryId = selectedCategory;
-    let finalColor = colors.primary;
+    setIsLoading(true);
+    try {
+      let finalCategoryId = selectedCategory;
+      let finalColor = colors.primary;
 
-    if (showCustomCategory && customCategory.trim()) {
-      finalCategoryId = customCategory.trim().toLowerCase().replace(/\s+/g, '_');
-      finalColor = categories[Math.floor(Math.random() * categories.length)].color;
-    } else {
-      const category = categories.find(c => c.id === selectedCategory);
-      if (category) finalColor = category.color;
+      if (showCustomCategory && customCategory.trim()) {
+        finalCategoryId = customCategory.trim().toLowerCase().replace(/\s+/g, '_');
+        finalColor = categories[Math.floor(Math.random() * categories.length)].color;
+      } else {
+        const category = categories.find(c => c.id === selectedCategory);
+        if (category) finalColor = category.color;
+      }
+
+      await addBranch({
+        name: name.trim(),
+        categoryId: finalCategoryId,
+        color: finalColor,
+        position: { x: 0, y: 0 }
+      });
+
+      // Forzar recarga del árbol
+      await fetchMyTree(true);
+
+      // Mostrar mensaje de éxito
+      Alert.alert(
+        '✅ Rama creada',
+        `La rama "${name.trim()}" ha sido añadida a tu árbol exitosamente.`,
+        [{
+          text: 'Ver árbol',
+          onPress: () => {
+            router.dismissAll();
+            router.replace('/(tabs)/tree');
+          }
+        }]
+      );
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'No se pudo crear la rama');
+      setIsLoading(false);
     }
-
-    await addBranch({
-      name: name.trim(),
-      categoryId: finalCategoryId,
-      color: finalColor,
-      position: { x: 0, y: 0 }
-    });
-
-    // Forzar recarga del árbol
-    await fetchMyTree(true);
-    
-    // Navegación agresiva al Tab de Árbol
-    router.dismissAll();
-    router.replace('/(tabs)/tree');
   };
 
   return (
@@ -86,7 +102,7 @@ export default function AddBranchScreen() {
         }}
       />
 
-      <ScrollView 
+      <ScrollView
         style={[styles.container, isDarkMode && styles.containerDark]}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: 40 }}
@@ -102,48 +118,53 @@ export default function AddBranchScreen() {
             onFocus={() => setShowSuggestions(true)}
           />
 
-            {showSuggestions && (
-              <View style={[styles.suggestionsContainer, isDarkMode && styles.suggestionsContainerDark]}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
-                  <Text style={{ fontWeight: 'bold', color: colors.textLight }}>Sugerencias:</Text>
-                  <TouchableOpacity onPress={() => setShowSuggestions(false)}><X size={16} color={colors.textLight} /></TouchableOpacity>
-                </View>
-                {branchSuggestions.map((s) => (
-                  <TouchableOpacity key={s.id} style={{ paddingVertical: 8 }} onPress={() => { setName(s.name); setShowSuggestions(false); Keyboard.dismiss(); }}>
-                    <Text style={{ color: colors.primary }}>{s.name}</Text>
-                  </TouchableOpacity>
-                ))}
+          {showSuggestions && (
+            <View style={[styles.suggestionsContainer, isDarkMode && styles.suggestionsContainerDark]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
+                <Text style={{ fontWeight: 'bold', color: colors.textLight }}>Sugerencias:</Text>
+                <TouchableOpacity onPress={() => setShowSuggestions(false)}><X size={16} color={colors.textLight} /></TouchableOpacity>
               </View>
-            )}
-          </View>
-
-          <View style={styles.formGroup}>
-            <Text style={[styles.label, isDarkMode && styles.labelDark]}>Categoría (Color)</Text>
-            <View style={styles.categoriesContainer}>
-              {categories.map(category => (
-                <TouchableOpacity
-                  key={category.id}
-                  style={[
-                    styles.categoryItem,
-                    selectedCategory === category.id && { backgroundColor: category.color, borderColor: category.color },
-                  ]}
-                  onPress={() => { setSelectedCategory(category.id); Keyboard.dismiss(); }}
-                >
-                  <Text style={[styles.categoryText, selectedCategory === category.id && { color: '#FFF', fontWeight: 'bold' }]}>
-                    {category.name}
-                  </Text>
+              {branchSuggestions.map((s) => (
+                <TouchableOpacity key={s.id} style={{ paddingVertical: 8 }} onPress={() => { setName(s.name); setShowSuggestions(false); Keyboard.dismiss(); }}>
+                  <Text style={{ color: colors.primary }}>{s.name}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-          </View>
+          )}
+        </View>
 
-          <TouchableOpacity
-            style={[styles.createButton, !name.trim() && styles.createButtonDisabled]}
-            onPress={handleCreate}
-          >
+        <View style={styles.formGroup}>
+          <Text style={[styles.label, isDarkMode && styles.labelDark]}>Categoría (Color)</Text>
+          <View style={styles.categoriesContainer}>
+            {categories.map(category => (
+              <TouchableOpacity
+                key={category.id}
+                style={[
+                  styles.categoryItem,
+                  selectedCategory === category.id && { backgroundColor: category.color, borderColor: category.color },
+                ]}
+                onPress={() => { setSelectedCategory(category.id); Keyboard.dismiss(); }}
+              >
+                <Text style={[styles.categoryText, selectedCategory === category.id && { color: '#FFF', fontWeight: 'bold' }]}>
+                  {category.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={[styles.createButton, (!name.trim() || isLoading) && styles.createButtonDisabled]}
+          onPress={handleCreate}
+          disabled={isLoading || !name.trim()}
+        >
+          {isLoading ? (
+            <ActivityIndicator color="#FFF" />
+          ) : (
             <Text style={styles.createButtonText}>Crear Rama</Text>
-          </TouchableOpacity>
-        </ScrollView>
+          )}
+        </TouchableOpacity>
+      </ScrollView>
     </>
   );
 }

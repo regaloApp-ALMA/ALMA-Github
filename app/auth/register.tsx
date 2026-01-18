@@ -3,12 +3,13 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Activi
 import { Stack, useRouter } from 'expo-router';
 import colors from '@/constants/colors';
 import { useUserStore } from '@/stores/userStore';
-import { ArrowLeft } from 'lucide-react-native';
+import { ArrowLeft, Eye, EyeOff } from 'lucide-react-native';
 
 export default function RegisterScreen() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const { register, isLoading, isAuthenticated } = useUserStore();
   const router = useRouter();
 
@@ -51,7 +52,7 @@ export default function RegisterScreen() {
 
     try {
       const result = await register(name, email, password);
-      
+
       // Si el registro fue exitoso y hay sesión (auto-login), redirigir inmediatamente
       if (result.session) {
         // Redirigir primero, luego mostrar mensaje (no bloqueante)
@@ -94,17 +95,17 @@ export default function RegisterScreen() {
     } catch (error: any) {
       // Manejar errores específicos de manera amigable
       let errorMessage = error.message || 'Error al crear la cuenta';
-      
-      if (error.message?.includes('already registered') || 
-          error.message?.includes('already exists') ||
-          error.message?.includes('User already registered')) {
+
+      if (error.message?.includes('already registered') ||
+        error.message?.includes('already exists') ||
+        error.message?.includes('User already registered')) {
         errorMessage = 'Este email ya está registrado. Por favor, inicia sesión o usa otro email.';
       } else if (error.message?.includes('Invalid email')) {
         errorMessage = 'Por favor, introduce un email válido.';
       } else if (error.message?.includes('Password')) {
         errorMessage = 'La contraseña debe tener al menos 6 caracteres.';
       }
-      
+
       Alert.alert('Error de registro', errorMessage);
     }
   };
@@ -158,14 +159,27 @@ export default function RegisterScreen() {
 
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Contraseña</Text>
-              <TextInput
-                style={styles.input}
-                value={password}
-                onChangeText={setPassword}
-                placeholder="Mín. 8 caracteres, 1 mayúscula, 1 minúscula, 1 número"
-                placeholderTextColor={colors.gray}
-                secureTextEntry
-              />
+              <View style={styles.passwordContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  value={password}
+                  onChangeText={setPassword}
+                  placeholder="Mín. 8 caracteres, 1 mayúscula, 1 minúscula, 1 número"
+                  placeholderTextColor={colors.gray}
+                  secureTextEntry={!showPassword}
+                />
+                <TouchableOpacity
+                  style={styles.eyeIcon}
+                  onPress={() => setShowPassword(!showPassword)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  {showPassword ? (
+                    <EyeOff size={20} color={colors.gray} />
+                  ) : (
+                    <Eye size={20} color={colors.gray} />
+                  )}
+                </TouchableOpacity>
+              </View>
               <Text style={styles.passwordHint}>
                 La contraseña debe tener al menos 8 caracteres, incluyendo una mayúscula, una minúscula y un número.
               </Text>
@@ -211,6 +225,9 @@ const styles = StyleSheet.create({
   inputContainer: { marginBottom: 20 },
   label: { fontSize: 14, color: colors.textLight, marginBottom: 8, fontWeight: '600' },
   input: { backgroundColor: colors.white, borderRadius: 12, padding: 16, fontSize: 16, borderWidth: 1, borderColor: colors.border },
+  passwordContainer: { position: 'relative', width: '100%' },
+  passwordInput: { backgroundColor: colors.white, borderRadius: 12, padding: 16, paddingRight: 50, fontSize: 16, borderWidth: 1, borderColor: colors.border },
+  eyeIcon: { position: 'absolute', right: 16, top: 16, zIndex: 10 },
   termsText: { fontSize: 13, color: colors.textLight, marginBottom: 24, lineHeight: 20, textAlign: 'center' },
   termsLink: { color: colors.primary, fontWeight: 'bold' },
   passwordHint: { fontSize: 12, color: colors.textLight, marginTop: 6, lineHeight: 16 },

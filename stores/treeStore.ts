@@ -51,7 +51,7 @@ interface TreeState {
     allowedBranchIds?: string[] | null;
   }) => Promise<void>;
 
-  // CORRECCIÓN AQUÍ: Actualizamos la definición para aceptar 'position'
+  //CORRECCIÓN AQUÍ: Actualizamos la definición para aceptar 'position'
   addBranch: (branch: {
     name: string;
     categoryId: string;
@@ -59,6 +59,12 @@ interface TreeState {
     description?: string;            // Opcional
     position?: { x: number; y: number }; // Opcional (Esto arregla tu error)
     isShared?: boolean;              // Opcional
+  }) => Promise<void>;
+
+  updateBranch: (branchId: string, updates: {
+    name?: string;
+    color?: string;
+    position?: { side: 'left' | 'right'; verticalOffset: number };
   }) => Promise<void>;
 
   deleteBranch: (branchId: string) => Promise<void>;
@@ -119,13 +125,13 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         console.log('✅ Árbol creado:', treeData.id);
       } else {
         console.log(`✅ Árbol encontrado: ${treeData.id} (creado: ${treeData.created_at})`);
-        
+
         // ⚠️ ADVERTENCIA: Si hay múltiples árboles, informar al usuario
         const { count } = await supabase
           .from('trees')
           .select('*', { count: 'exact', head: true })
           .eq('owner_id', userId);
-        
+
         if (count && count > 1) {
           console.warn(`⚠️ ADVERTENCIA: El usuario tiene ${count} árboles. Usando el más antiguo (${treeData.id}).`);
         }
@@ -139,7 +145,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         .select('*')
         .eq('tree_id', treeData.id)
         .order('created_at', { ascending: true });
-      
+
       if (branchesError) {
         console.error('❌ Error obteniendo ramas:', branchesError);
         throw branchesError;
@@ -301,36 +307,36 @@ export const useTreeStore = create<TreeState>((set, get) => ({
     // Obtener ramas actuales para calcular posición
     const currentTree = get().tree;
     const branchesCount = currentTree?.branches?.length || 0;
-    
+
     try {
       // 🧠 AUTO-LAYOUT: Calcular posición automática si es {0,0} o no existe
       let finalPosition = branch.position || { x: 0, y: 0 };
-      
+
       // Si la posición es {0,0}, calcular automáticamente con algoritmo orgánico mejorado
       if (finalPosition.x === 0 && finalPosition.y === 0) {
         const isLeft = branchesCount % 2 === 0;
         const sideMultiplier = isLeft ? -1 : 1;
-        
+
         // Altura variable: más arriba para las primeras ramas
         const verticalOffset = 120 + (branchesCount * 110);
         const newY = -verticalOffset; // Negativo para subir en el canvas
-        
+
         // Longitud variable con variación orgánica
         const baseLength = 200;
         const lengthVariation = 30 * Math.sin(branchesCount * 0.5);
         const branchLength = baseLength + lengthVariation;
-        
+
         // Ángulo variable para distribución más natural
         const angleVariation = (branchesCount % 3) * 8;
         const angle = 45 + angleVariation;
         const angleRad = (angle * Math.PI) / 180;
-        
+
         const newX = sideMultiplier * branchLength * Math.cos(angleRad);
-        
+
         finalPosition = { x: newX, y: newY };
         console.log(`🧠 Auto-layout orgánico calculado para rama ${branchesCount + 1}:`, finalPosition);
       }
-      
+
       // ⚠️ IMPORTANTE: Solo enviar campos que existen en el SQL
       // El SQL tiene: id, tree_id, name, category, color, is_shared, position, created_at
       // NO tiene: user_id, description
@@ -350,7 +356,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         .insert(insertData)
         .select()
         .single();
-      
+
       if (error) {
         console.error('❌ Error insertando rama:', error);
         throw error;
@@ -399,14 +405,14 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       try {
         await get().fetchMyTree(true); // Forzar refresh completo
         console.log('✅ fetchMyTree completado después de crear rama');
-        
+
         // 🔍 VERIFICACIÓN: Comprobar que la rama esté en el estado
         const updatedTree = get().tree;
         if (updatedTree && updatedTree.branches) {
           const branchExists = updatedTree.branches.some(b => b.id === newBranch.id);
           console.log(`🔍 Verificación post-sync: Rama "${newBranch.name}" ${branchExists ? '✅ SÍ' : '❌ NO'} está en el estado`);
           console.log(`📊 Total de ramas en estado: ${updatedTree.branches.length}`);
-          
+
           if (!branchExists) {
             console.warn('⚠️ La rama no está en el estado después de sincronizar. Esto puede indicar un problema con RLS o el tree_id.');
             // Intentar una segunda sincronización después de un pequeño delay
@@ -431,9 +437,78 @@ export const useTreeStore = create<TreeState>((set, get) => ({
     }
   },
 
+  updateBranch: async (branchId: string, updates: {
+    name?: string;
+    color?: string;
+    position?: { side: 'left' | 'right'; verticalOffset: number };
+  }) => {
+    const userId = useUserStore.getState().user?.id;
+    if (!userId) throw new Error('Usuario no autenticado');
+
+    console.log('🔧 Actualizando rama:', branchId, updates);
+
+    // Actualización optimista: actualizar estado local inmediatamente
+    const currentState = get();
+    const previousTree = currentState.tree;
+
+    if (previousTree) {
+      const updatedBranches = previousTree.branches.map(branch => {
+        if (branch.id === branchId) {
+          return {
+            ...branch,
+            ...(updates.name && { name: updates.name }),
+            ...(updates.color && { color: updates.color }),
+            ...(updates.position && { position: updates.position as any }) // Allow flexible position format
+          };
+        }
+        return branch;
+      });
+
+      set({
+        tree: {
+          ...previousTree,
+          branches: updatedBranches
+        }
+      });
+      console.log('✅ Estado local actualizado (optimista)');
+    }
+
+    try {
+      // Preparar datos para Supabase
+      const updateData: any = {};
+
+      if (updates.name !== undefined) updateData.name = updates.name;
+      if (updates.color !== undefined) updateData.color = updates.color;
+      if (updates.position !== undefined) updateData.position = updates.position;
+
+      console.log('📝 Actualizando en Supabase:', updateData);
+
+      const { error } = await supabase
+        .from('branches')
+        .update(updateData)
+        .eq('id', branchId);
+
+      if (error) {
+        console.error('❌ Error actualizando rama:', error);
+        // Restaurar estado anterior si falla
+        set({ tree: previousTree });
+        throw error;
+      }
+
+      console.log('✅ Rama actualizada exitosamente en Supabase');
+
+      // Sincronizar estado completo
+      await get().fetchMyTree(true);
+    } catch (e: any) {
+      console.error('❌ Error en updateBranch:', e);
+      set({ error: e.message || 'No se pudo actualizar la rama' });
+      throw e;
+    }
+  },
+
   deleteBranch: async (branchId) => {
     console.log('🗑️ [TreeStore] Iniciando borrado de rama:', branchId);
-    
+
     const state = get();
     const previousTree = state.tree;
     const previousSharedTree = state.sharedTree;
@@ -475,31 +550,31 @@ export const useTreeStore = create<TreeState>((set, get) => ({
     try {
       console.log('🗑️ [TreeStore] Ejecutando DELETE en Supabase...');
       const { data, error } = await supabase.from('branches').delete().eq('id', branchId).select();
-      
+
       if (error) {
         console.error('❌ [TreeStore] Error de Supabase al borrar rama:', error);
         console.error('❌ [TreeStore] Código de error:', error.code);
         console.error('❌ [TreeStore] Mensaje:', error.message);
         console.error('❌ [TreeStore] Detalles:', error.details);
-        
+
         // Si falla, restaurar todos los estados anteriores
-        set({ 
+        set({
           tree: previousTree,
           sharedTree: previousSharedTree,
           viewingTree: previousViewingTree
         });
-        
+
         // Verificar si es error de permisos/RLS
-        const isPermissionError = error.code === '42501' || 
-                                 error.message?.toLowerCase().includes('policy') ||
-                                 error.message?.toLowerCase().includes('permission') ||
-                                 error.message?.toLowerCase().includes('rls');
-        
+        const isPermissionError = error.code === '42501' ||
+          error.message?.toLowerCase().includes('policy') ||
+          error.message?.toLowerCase().includes('permission') ||
+          error.message?.toLowerCase().includes('rls');
+
         // Crear un error más descriptivo
-        const errorMessage = isPermissionError 
+        const errorMessage = isPermissionError
           ? 'Error de permisos: Verifica las políticas RLS en Supabase'
           : (error.message || 'No se pudo borrar la rama');
-        
+
         const enhancedError = new Error(errorMessage);
         (enhancedError as any).code = error.code;
         (enhancedError as any).error = error;
@@ -541,7 +616,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         .insert(insertData)
         .select()
         .single();
-      
+
       if (error) {
         console.error('❌ Error insertando fruto:', error);
         throw error;
@@ -583,7 +658,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
 
       // Actualizar racha
       useUserStore.getState().updateStreak();
-      
+
       // Devolver el ID del fruto creado para redirección
       return newFruit.id;
     } catch (e: any) {
@@ -599,12 +674,12 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       // El SQL tiene: title, description, media_urls, date, is_shared, is_public, position
       // NO tiene: location, user_id, tree_id
       const updateData: any = {};
-      
+
       if (updates.title !== undefined) updateData.title = updates.title.trim();
       if (updates.description !== undefined) updateData.description = updates.description || null;
       if (updates.mediaUrls !== undefined) {
-        updateData.media_urls = Array.isArray(updates.mediaUrls) 
-          ? updates.mediaUrls 
+        updateData.media_urls = Array.isArray(updates.mediaUrls)
+          ? updates.mediaUrls
           : (updates.mediaUrls ? [updates.mediaUrls] : []);
       }
       if (updates.branchId !== undefined) updateData.branch_id = updates.branchId;
@@ -617,12 +692,12 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         .from('fruits')
         .update(updateData)
         .eq('id', fruitId);
-      
+
       if (error) {
         console.error('❌ Error actualizando fruto:', error);
         throw error;
       }
-      
+
       await get().fetchMyTree();
     } catch (e: any) {
       console.error('❌ Error en updateFruit:', e);
@@ -633,7 +708,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
 
   deleteFruit: async (fruitId: string) => {
     console.log('🗑️ [TreeStore] Iniciando borrado de recuerdo:', fruitId);
-    
+
     const state = get();
     const previousTree = state.tree;
     const previousSharedTree = state.sharedTree;
@@ -682,14 +757,14 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         console.error('❌ [TreeStore] Error obteniendo recuerdo para borrar:', fetchError);
         console.error('❌ [TreeStore] Código:', fetchError.code);
         console.error('❌ [TreeStore] Mensaje:', fetchError.message);
-        
+
         // Restaurar estado
-        set({ 
+        set({
           tree: previousTree,
           sharedTree: previousSharedTree,
           viewingTree: previousViewingTree
         });
-        
+
         const enhancedError = new Error(fetchError.message || 'No se pudo obtener el recuerdo para borrar');
         (enhancedError as any).code = fetchError.code;
         (enhancedError as any).error = fetchError;
@@ -705,22 +780,22 @@ export const useTreeStore = create<TreeState>((set, get) => ({
             // Extraer la ruta relativa del archivo desde la URL completa
             // Formato esperado: https://[project].supabase.co/storage/v1/object/public/memories/[ruta]
             // O: https://[project].supabase.co/storage/v1/object/sign/memories/[ruta]?...
-            
+
             // Buscar el patrón '/memories/' en la URL
             const memoriesIndex = url.indexOf('/memories/');
             if (memoriesIndex !== -1) {
               // Extraer todo lo que viene después de '/memories/'
               let filePath = url.substring(memoriesIndex + '/memories/'.length);
-              
+
               // Si hay query params (como ?token=...), eliminarlos
               const queryIndex = filePath.indexOf('?');
               if (queryIndex !== -1) {
                 filePath = filePath.substring(0, queryIndex);
               }
-              
+
               // Decodificar la URL si está codificada
               filePath = decodeURIComponent(filePath);
-              
+
               if (filePath) {
                 filePaths.push(filePath);
                 console.log(`📁 Archivo a borrar: ${filePath}`);
@@ -753,31 +828,31 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       // 🗑️ PASO 3: Borrar el registro de la tabla fruits
       console.log('🗑️ [TreeStore] Ejecutando DELETE en Supabase...');
       const { data, error } = await supabase.from('fruits').delete().eq('id', fruitId).select();
-      
+
       if (error) {
         console.error('❌ [TreeStore] Error de Supabase al borrar recuerdo:', error);
         console.error('❌ [TreeStore] Código de error:', error.code);
         console.error('❌ [TreeStore] Mensaje:', error.message);
         console.error('❌ [TreeStore] Detalles:', error.details);
-        
+
         // Si falla, restaurar todos los estados anteriores
-        set({ 
+        set({
           tree: previousTree,
           sharedTree: previousSharedTree,
           viewingTree: previousViewingTree
         });
-        
+
         // Verificar si es error de permisos/RLS
-        const isPermissionError = error.code === '42501' || 
-                                 error.message?.toLowerCase().includes('policy') ||
-                                 error.message?.toLowerCase().includes('permission') ||
-                                 error.message?.toLowerCase().includes('rls');
-        
+        const isPermissionError = error.code === '42501' ||
+          error.message?.toLowerCase().includes('policy') ||
+          error.message?.toLowerCase().includes('permission') ||
+          error.message?.toLowerCase().includes('rls');
+
         // Crear un error más descriptivo
-        const errorMessage = isPermissionError 
+        const errorMessage = isPermissionError
           ? 'Error de permisos: Verifica las políticas RLS en Supabase'
           : (error.message || 'No se pudo borrar el recuerdo');
-        
+
         const enhancedError = new Error(errorMessage);
         (enhancedError as any).code = error.code;
         (enhancedError as any).error = error;
@@ -873,7 +948,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
 
       // 2. Crear conexión familiar (añadir como raíz)
       let connectionData: { id: string; relative_id: string } | null = null;
-      
+
       const { data: newConnection, error: connectionError } = await supabase
         .from('family_connections')
         .insert({
@@ -891,7 +966,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
           throw connectionError;
         }
         console.log('ℹ️ La conexión familiar ya existía');
-        
+
         // Si ya existe, obtener la conexión existente
         const { data: existingConnection } = await supabase
           .from('family_connections')
@@ -899,7 +974,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
           .eq('user_id', userId)
           .eq('relative_id', granterId)
           .single();
-        
+
         if (existingConnection) {
           connectionData = existingConnection;
         }
@@ -925,7 +1000,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
           treeId: currentState.tree?.id || '',
           status: 'active'
         };
-        
+
         // Verificar que no exista ya en roots para evitar duplicados
         const rootExists = updatedRoots.some(root => root.id === connectionData.id);
         if (!rootExists) {
@@ -946,7 +1021,7 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       get().fetchMyTree(true).catch(err => {
         console.warn('⚠️ Error al recargar árbol después de aceptar invitación:', err);
       });
-      
+
       // 5. Recargar invitaciones para asegurar consistencia
       get().fetchPendingInvitations().catch(err => {
         console.warn('⚠️ Error al recargar invitaciones:', err);
@@ -1122,16 +1197,16 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         // Si NO soy el dueño, filtrar explícitamente solo frutos públicos
         const userId = useUserStore.getState().user?.id;
         const isOwner = treeData.owner_id === userId;
-        
+
         let fruitsQuery = supabase
           .from('fruits')
           .select('*')
           .in('branch_id', branchIds);
-        
+
         if (!isOwner) {
           fruitsQuery = fruitsQuery.eq('is_public', true);
         }
-        
+
         const { data: fruits, error: fruitsError } = await fruitsQuery
           .order('created_at', { ascending: false });
 
