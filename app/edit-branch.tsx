@@ -88,7 +88,7 @@ export default function EditBranchScreen() {
                 }]
             );
         } catch (error: any) {
-            Alert.alert('Error', error.message || 'No se pudo actualizar la rama');
+            Alert.alert('Error', `No se pudo actualizar la rama: ${error.message || 'Intenta de nuevo'}`);
             setIsSaving(false);
         }
     };

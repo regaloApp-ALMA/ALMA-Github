@@ -46,7 +46,7 @@ export const optimizeImage = async (
 ): Promise<string> => {
   try {
     const format = getImageFormat();
-    
+
     if (type === 'profile') {
       // Imágenes de perfil: 300x300px cuadradas, compresión 0.5
       const manipulated = await ImageManipulator.manipulateAsync(
@@ -109,11 +109,12 @@ export const processMediaAsset = async (
       // asset.duration puede venir en segundos o milisegundos dependiendo de la plataforma
       // Normalizamos a milisegundos: si es menor a 1000, asumimos que está en segundos
       const durationMs = asset.duration < 1000 ? asset.duration * 1000 : asset.duration;
-      
+
       if (!validateVideoDuration(durationMs)) {
         Alert.alert(
-          'Video muy largo',
-          'El límite son 15 segundos para no saturar el servidor. Por favor, selecciona un video más corto.'
+          'Video demasiado largo',
+          'Para asegurar la calidad de ALMA, los videos no pueden superar los 15 segundos. Por favor, selecciona un video más corto o edítalo antes de subirlo.',
+          [{ text: 'Entendido' }]
         );
         return null;
       }

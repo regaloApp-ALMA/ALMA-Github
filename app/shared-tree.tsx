@@ -17,18 +17,16 @@ export default function SharedTreeScreen() {
   // Live Updates: Refetch shared tree data when screen gains focus
   useFocusEffect(
     React.useCallback(() => {
-      if (sharedTree) {
-        // Refetch the shared tree to get latest data
-        const treeIdToFetch = params.treeId || sharedTree.id;
-        const relativeIdToFetch = params.relativeId;
+      // Determinar qué parámetro usar para refetch
+      const treeIdToFetch = params.treeId || sharedTree?.id;
+      const relativeIdToFetch = params.relativeId;
 
-        if (treeIdToFetch) {
-          fetchSharedTree(treeIdToFetch, true); // true = isTreeId
-        } else if (relativeIdToFetch) {
-          fetchSharedTree(relativeIdToFetch, false); // false = isRelativeId
-        }
+      if (treeIdToFetch) {
+        fetchSharedTree(treeIdToFetch, true); // true = isTreeId
+      } else if (relativeIdToFetch) {
+        fetchSharedTree(relativeIdToFetch, false); // false = isRelativeId
       }
-    }, [sharedTree?.id, params.treeId, params.relativeId])
+    }, [params.treeId, params.relativeId, sharedTree?.id])
   );
 
   useEffect(() => {

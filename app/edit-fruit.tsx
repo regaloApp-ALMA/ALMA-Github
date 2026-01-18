@@ -180,7 +180,7 @@ export default function EditFruitScreen() {
         }]
       );
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'No se pudo actualizar el recuerdo');
+      Alert.alert('Error', `No se pudo actualizar el recuerdo: ${error.message || 'Intenta de nuevo'}`);
     } finally {
       setIsSaving(false);
     }

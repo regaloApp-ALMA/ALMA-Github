@@ -152,7 +152,7 @@ export default function AddMemoryManualScreen() {
         }]
       );
     } catch (error: any) {
-      Alert.alert('Error', error.message || 'No se pudo guardar el recuerdo');
+      Alert.alert('Error', `No se pudo guardar el recuerdo: ${error.message || 'Intenta de nuevo'}`);
     } finally {
       setIsSaving(false);
     }

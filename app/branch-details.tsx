@@ -130,7 +130,7 @@ export default function BranchDetailsScreen() {
     }
 
     // Solución robusta: usar requestAnimationFrame para asegurar que se ejecute en el siguiente frame
-    if (Platform.OS === 'web') {
+    if ((Platform.OS as string) === 'web') {
       // En web, usar window.confirm como fallback si Alert no funciona
       const confirmed = window.confirm("¿Eliminar Rama?\n\nEsta acción es irreversible y borrará todo el contenido asociado.");
       if (confirmed) {
@@ -193,7 +193,7 @@ export default function BranchDetailsScreen() {
     } catch (error) {
       console.error('❌ Error mostrando Alert:', error);
       // Fallback para web
-      if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if ((Platform.OS as string) === 'web' && typeof window !== 'undefined') {
         const confirmed = window.confirm("¿Eliminar Rama?\n\nEsta acción es irreversible.");
         if (confirmed) {
           (async () => {
@@ -249,28 +249,46 @@ export default function BranchDetailsScreen() {
           headerStyle: { backgroundColor: branch.color || colors.primary },
           headerTintColor: colors.white,
           headerRight: () => finalIsOwner ? (
-            <TouchableOpacity
-              onPress={handleDeleteBranch}
-              style={{
-                marginRight: 10,
-                opacity: isDeleting ? 0.5 : 1,
-                zIndex: 1000,
-                padding: 8,
-                minWidth: 40,
-                minHeight: 40,
-                justifyContent: 'center',
-                alignItems: 'center'
-              }}
-              disabled={isDeleting}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              activeOpacity={0.7}
-            >
-              {isDeleting ? (
-                <ActivityIndicator size="small" color="white" />
-              ) : (
-                <Trash2 size={20} color="white" />
-              )}
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', marginRight: 10 }}>
+              {/* Botón Editar */}
+              <TouchableOpacity
+                onPress={() => router.push({ pathname: '/edit-branch' as any, params: { id } })}
+                style={{
+                  marginRight: 12,
+                  padding: 8,
+                  minWidth: 40,
+                  minHeight: 40,
+                  justifyContent: 'center',
+                  alignItems: 'center'
+                }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                activeOpacity={0.7}
+              >
+                <Edit size={20} color="white" />
+              </TouchableOpacity>
+
+              {/* Botón Eliminar (existente) */}
+              <TouchableOpacity
+                onPress={handleDeleteBranch}
+                style={{
+                  opacity: isDeleting ? 0.5 : 1,
+                  padding: 8,
+                  minWidth: 40,
+                  minHeight: 40,
+                  justifyContent: 'center',
+                  alignItems: 'center'
+                }}
+                disabled={isDeleting}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                activeOpacity={0.7}
+              >
+                {isDeleting ? (
+                  <ActivityIndicator size="small" color="white" />
+                ) : (
+                  <Trash2 size={20} color="white" />
+                )}
+              </TouchableOpacity>
+            </View>
           ) : null
         }}
       />
