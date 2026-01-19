@@ -45,20 +45,35 @@ export const useGiftStore = create<GiftState>((set, get) => ({
 
       if (error) throw error;
 
-      const formattedGifts: GiftType[] = data.map((g: any) => ({
-        id: g.id,
-        type: g.type as any,
-        senderId: g.sender_id,
-        senderName: g.sender?.name || 'Alguien',
-        recipientId: g.recipient_id || g.recipient_email,
-        message: g.message,
-        createdAt: g.created_at,
-        status: g.status,
-        contentId: g.content_data?.title || g.content_data?.name || 'Regalo', // Usar título del contenido real
-        contentData: g.content_data, // Importante: datos reales
-        unlockDate: g.unlock_date,
-        isNew: !g.is_read
-      }));
+      const formattedGifts: GiftType[] = data
+        .filter((g: any) => {
+          // Lógica de limpieza: Ocultar regalos antiguos ya procesados
+          if (g.status === 'accepted' || g.status === 'rejected') {
+            const updateDate = new Date(g.updated_at || g.created_at);
+            const tenDaysAgo = new Date();
+            tenDaysAgo.setDate(tenDaysAgo.getDate() - 10);
+
+            // Si es más viejo que 10 días, filtrar fuera
+            if (updateDate < tenDaysAgo) {
+              return false;
+            }
+          }
+          return true;
+        })
+        .map((g: any) => ({
+          id: g.id,
+          type: g.type as any,
+          senderId: g.sender_id,
+          senderName: g.sender?.name || 'Alguien',
+          recipientId: g.recipient_id || g.recipient_email,
+          message: g.message,
+          createdAt: g.created_at,
+          status: g.status,
+          contentId: g.content_data?.title || g.content_data?.name || 'Regalo', // Usar título del contenido real
+          contentData: g.content_data, // Importante: datos reales
+          unlockDate: g.unlock_date,
+          isNew: !g.is_read
+        }));
 
       set({ gifts: formattedGifts, isLoading: false });
     } catch (error: any) {

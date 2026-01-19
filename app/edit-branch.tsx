@@ -24,8 +24,7 @@ export default function EditBranchScreen() {
 
     const [name, setName] = useState('');
     const [selectedColor, setSelectedColor] = useState(colors.primary);
-    const [side, setSide] = useState<'left' | 'right'>('left');
-    const [verticalOffset, setVerticalOffset] = useState(120);
+    // Estado de posición eliminado
     const [isSaving, setIsSaving] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -38,15 +37,7 @@ export default function EditBranchScreen() {
                 setName(branch.name);
                 setSelectedColor(branch.color || colors.primary);
 
-                // Parse existing position if available
-                if (branch.position && typeof branch.position === 'object') {
-                    if ('side' in branch.position) {
-                        setSide((branch.position as any).side || 'left');
-                    }
-                    if ('verticalOffset' in branch.position) {
-                        setVerticalOffset((branch.position as any).verticalOffset || 120);
-                    }
-                }
+                // Posición automática ignorada en edición manual
                 setIsLoading(false);
             } else {
                 Alert.alert('Error', 'Rama no encontrada');
@@ -73,7 +64,7 @@ export default function EditBranchScreen() {
             await updateBranch(id, {
                 name: name.trim(),
                 color: selectedColor,
-                position: { side, verticalOffset }
+                // position: se mantiene la que tenga o se recalcula en treeStore, no se edita aquí
             });
 
             Alert.alert(
@@ -149,64 +140,7 @@ export default function EditBranchScreen() {
                     </View>
                 </View>
 
-                <View style={styles.group}>
-                    <Text style={[styles.label, isDarkMode && styles.textWhite]}>Posición en el árbol</Text>
-
-                    <Text style={[styles.sublabel, isDarkMode && styles.textLight]}>Lado del tronco</Text>
-                    <View style={styles.sideSelector}>
-                        <TouchableOpacity
-                            style={[
-                                styles.sideButton,
-                                side === 'left' && styles.sideButtonActive,
-                                { borderTopLeftRadius: 12, borderBottomLeftRadius: 12 }
-                            ]}
-                            onPress={() => setSide('left')}
-                        >
-                            <Text style={[styles.sideButtonText, side === 'left' && styles.sideButtonTextActive]}>
-                                ← Izquierda
-                            </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[
-                                styles.sideButton,
-                                side === 'right' && styles.sideButtonActive,
-                                { borderTopRightRadius: 12, borderBottomRightRadius: 12 }
-                            ]}
-                            onPress={() => setSide('right')}
-                        >
-                            <Text style={[styles.sideButtonText, side === 'right' && styles.sideButtonTextActive]}>
-                                Derecha →
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-
-                    <Text style={[styles.sublabel, { marginTop: 20 }, isDarkMode && styles.textLight]}>
-                        Altura: {verticalOffset}px
-                    </Text>
-                    <View style={styles.sliderHint}>
-                        <Text style={styles.sliderLabel}>Arriba</Text>
-                        <Text style={styles.sliderLabel}>Abajo</Text>
-                    </View>
-                    <View style={styles.sliderContainer}>
-                        {[0, 120, 240, 360, 480].map((value) => (
-                            <TouchableOpacity
-                                key={value}
-                                style={[
-                                    styles.sliderButton,
-                                    verticalOffset === value && styles.sliderButtonActive
-                                ]}
-                                onPress={() => setVerticalOffset(value)}
-                            >
-                                <Text style={[
-                                    styles.sliderButtonText,
-                                    verticalOffset === value && styles.sliderButtonTextActive
-                                ]}>
-                                    {value}
-                                </Text>
-                            </TouchableOpacity>
-                        ))}
-                    </View>
-                </View>
+                {/* Sección de Posición eliminada para manejo automático */}
 
                 <TouchableOpacity
                     style={[styles.saveButton, isSaving && styles.disabled]}

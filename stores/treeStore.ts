@@ -526,7 +526,6 @@ export const useTreeStore = create<TreeState>((set, get) => ({
       console.log('✅ [TreeStore] Estado local actualizado (optimista)');
     }
 
-    // También actualizar sharedTree/viewingTree si están activos
     if (previousSharedTree) {
       set({
         sharedTree: {
@@ -548,14 +547,63 @@ export const useTreeStore = create<TreeState>((set, get) => ({
     }
 
     try {
-      console.log('🗑️ [TreeStore] Ejecutando DELETE en Supabase...');
+      // 🗑️ PASO 1: Obtener todos los frutos de la rama para borrar sus medios
+      console.log('🗑️ [TreeStore] Obteniendo frutos de la rama para limpieza de basura...');
+      const { data: fruits, error: fruitsError } = await supabase
+        .from('fruits')
+        .select('media_urls')
+        .eq('branch_id', branchId);
+
+      if (fruitsError) {
+        console.warn('⚠️ Error obteniendo frutos para limpieza (continuando borrado de DB):', fruitsError);
+      } else if (fruits && fruits.length > 0) {
+        // Recopilar todas las URLs de todos los frutos
+        const allMediaUrls = fruits.flatMap(f => f.media_urls || []);
+
+        if (allMediaUrls.length > 0) {
+          const filePaths: string[] = [];
+
+          allMediaUrls.forEach((url: string) => {
+            try {
+              // Misma lógica de extracción de path que en deleteFruit
+              const memoriesIndex = url.indexOf('/memories/');
+              if (memoriesIndex !== -1) {
+                let filePath = url.substring(memoriesIndex + '/memories/'.length);
+                const queryIndex = filePath.indexOf('?');
+                if (queryIndex !== -1) {
+                  filePath = filePath.substring(0, queryIndex);
+                }
+                filePath = decodeURIComponent(filePath);
+                if (filePath) filePaths.push(filePath);
+              }
+            } catch (e) {
+              console.warn('⚠️ Error procesando URL para borrado:', url);
+            }
+          });
+
+          if (filePaths.length > 0) {
+            console.log(`🗑️ Eliminando ${filePaths.length} archivos asociados a la rama...`);
+            const { error: storageError } = await supabase
+              .storage
+              .from('memories')
+              .remove(filePaths);
+
+            if (storageError) {
+              console.warn('⚠️ Error en borrado masivo del storage:', storageError);
+            } else {
+              console.log('✅ Limpieza de archivos completada.');
+            }
+          }
+        }
+      }
+
+      // 🗑️ PASO 2: Borrar la rama de la DB
+      console.log('🗑️ [TreeStore] Ejecutando DELETE rama en Supabase...');
+      // ON DELETE CASCADE en Postgres debería borrar los frutos automáticamente
       const { data, error } = await supabase.from('branches').delete().eq('id', branchId).select();
 
       if (error) {
         console.error('❌ [TreeStore] Error de Supabase al borrar rama:', error);
-        console.error('❌ [TreeStore] Código de error:', error.code);
-        console.error('❌ [TreeStore] Mensaje:', error.message);
-        console.error('❌ [TreeStore] Detalles:', error.details);
 
         // Si falla, restaurar todos los estados anteriores
         set({
@@ -564,30 +612,22 @@ export const useTreeStore = create<TreeState>((set, get) => ({
           viewingTree: previousViewingTree
         });
 
-        // Verificar si es error de permisos/RLS
         const isPermissionError = error.code === '42501' ||
           error.message?.toLowerCase().includes('policy') ||
           error.message?.toLowerCase().includes('permission') ||
           error.message?.toLowerCase().includes('rls');
 
-        // Crear un error más descriptivo
         const errorMessage = isPermissionError
           ? 'Error de permisos: Verifica las políticas RLS en Supabase'
           : (error.message || 'No se pudo borrar la rama');
 
-        const enhancedError = new Error(errorMessage);
-        (enhancedError as any).code = error.code;
-        (enhancedError as any).error = error;
-        throw enhancedError;
+        throw new Error(errorMessage);
       }
 
       console.log('✅ [TreeStore] Rama borrada exitosamente en Supabase');
-      console.log('✅ [TreeStore] Datos borrados:', data);
     } catch (error: any) {
       console.error('❌ [TreeStore] Error completo al borrar rama:', error);
-      // El estado ya se restauró arriba si falló
       set({ error: 'No se pudo borrar la rama.' });
-      // Recargar árbol para sincronizar
       await get().fetchMyTree();
       throw error;
     }

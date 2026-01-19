@@ -6,23 +6,23 @@ import * as ImageManipulator from 'expo-image-manipulator';
 
 // Función helper para obtener el formato correcto
 const getImageFormat = () => {
-  try {
-    if (ImageManipulator && ImageManipulator.SaveFormat) {
-      return ImageManipulator.SaveFormat.JPEG;
+    try {
+        if (ImageManipulator && ImageManipulator.SaveFormat) {
+            return ImageManipulator.SaveFormat.JPEG;
+        }
+    } catch (e) {
+        // Fallback
     }
-  } catch (e) {
-    // Fallback
-  }
-  return 'jpeg' as any;
+    return 'jpeg' as any;
 };
 
 /**
  * Detecta si un URI es un vídeo basándose en la extensión o el tipo MIME
  */
 const isVideoFile = (uri: string): boolean => {
-  const videoExtensions = ['.mp4', '.mov', '.m4v', '.avi', '.mkv', '.webm'];
-  const lowerUri = uri.toLowerCase();
-  return videoExtensions.some(ext => lowerUri.includes(ext)) || lowerUri.includes('video');
+    const videoExtensions = ['.mp4', '.mov', '.m4v', '.avi', '.mkv', '.webm'];
+    const lowerUri = uri.toLowerCase();
+    return videoExtensions.some(ext => lowerUri.includes(ext)) || lowerUri.includes('video');
 };
 
 export const uploadMedia = async (uri: string, userId: string, bucket: string): Promise<string | null> => {
@@ -34,7 +34,7 @@ export const uploadMedia = async (uri: string, userId: string, bucket: string): 
     try {
         // Detectar si es video (los vídeos ya vienen comprimidos del picker nativo)
         const isVideo = isVideoFile(uri);
-        
+
         if (isVideo) {
             // Para videos: subir directamente sin compresión adicional
             // El vídeo ya viene comprimido por el sistema operativo gracias a videoQuality y videoExportPreset
@@ -42,15 +42,15 @@ export const uploadMedia = async (uri: string, userId: string, bucket: string): 
                 encoding: 'base64' as any,
             });
             const fileData = decode(base64);
-            
+
             // Detectar extensión del archivo
             const fileExt = uri.split('.').pop()?.toLowerCase() || 'mp4';
             const fileName = `${userId}/${Date.now()}.${fileExt}`;
 
             // Determinar content type
-            const contentType = fileExt === 'mov' ? 'video/quicktime' : 
-                              fileExt === 'm4v' ? 'video/x-m4v' : 
-                              'video/mp4';
+            const contentType = fileExt === 'mov' ? 'video/quicktime' :
+                fileExt === 'm4v' ? 'video/x-m4v' :
+                    'video/mp4';
 
             const { data, error: uploadError } = await supabase.storage
                 .from(bucket)
@@ -68,6 +68,7 @@ export const uploadMedia = async (uri: string, userId: string, bucket: string): 
                 .from(bucket)
                 .getPublicUrl(fileName);
 
+            console.log('🎥 Video Public URL:', urlData.publicUrl);
             return urlData.publicUrl;
         }
 
@@ -113,6 +114,7 @@ export const uploadMedia = async (uri: string, userId: string, bucket: string): 
             .from(bucket)
             .getPublicUrl(fileName);
 
+        console.log('📸 Image Public URL:', urlData.publicUrl);
         return urlData.publicUrl;
 
     } catch (error) {
@@ -123,8 +125,8 @@ export const uploadMedia = async (uri: string, userId: string, bucket: string): 
 
 // Nueva función para subir múltiples archivos
 export const uploadMultipleMedia = async (
-    uris: string[], 
-    userId: string, 
+    uris: string[],
+    userId: string,
     bucket: string // OBLIGATORIO: debe ser 'avatars' o 'memories'
 ): Promise<string[]> => {
     // Validar que el bucket esté especificado

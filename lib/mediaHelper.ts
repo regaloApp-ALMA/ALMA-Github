@@ -112,8 +112,8 @@ export const processMediaAsset = async (
 
       if (!validateVideoDuration(durationMs)) {
         Alert.alert(
-          'Video demasiado largo',
-          'Para asegurar la calidad de ALMA, los videos no pueden superar los 15 segundos. Por favor, selecciona un video más corto o edítalo antes de subirlo.',
+          'Video excedido',
+          'El video dura más de 15 segundos. Por favor, recórtalo o elige otro.',
           [{ text: 'Entendido' }]
         );
         return null;

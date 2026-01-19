@@ -6,14 +6,18 @@ import { useTreeStore } from '@/stores/treeStore';
 import { useUserStore } from '@/stores/userStore';
 import colors from '@/constants/colors';
 import { useThemeStore } from '@/stores/themeStore';
-import { Gift, Clock, Send, Heart, Image as ImageIcon, X, Calendar } from 'lucide-react-native';
+import { Gift, Clock, Send, Heart, Image as ImageIcon, X, Calendar, Mail } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadMedia } from '@/lib/storageHelper';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { processMediaAsset } from '@/lib/mediaHelper';
 
 export default function CreateGiftScreen() {
-  const [giftType, setGiftType] = useState<'instant' | 'timeCapsule' | null>(null);
+  const [activeStep, setActiveStep] = useState<'selection' | 'form'>('selection');
+
+  // Tipos específicos para la UI (mapeados a 'instant' | 'timeCapsule' internamente)
+  const [selectedOption, setSelectedOption] = useState<'message' | 'memory' | 'instant' | null>(null);
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [recipientEmail, setRecipientEmail] = useState('');
@@ -31,13 +35,17 @@ export default function CreateGiftScreen() {
   const router = useRouter();
   const isDarkMode = theme === 'dark';
 
+  const handleSelectOption = (option: 'message' | 'memory' | 'instant') => {
+    setSelectedOption(option);
+    setActiveStep('form');
+  };
+
   const handlePickImage = async () => {
     try {
-      // Configuración optimizada: videoQuality para reducir peso de videos
       const pickerOptions: ImagePicker.ImagePickerOptions = {
         mediaTypes: ImagePicker.MediaTypeOptions?.All || 'All' as any,
         allowsEditing: true,
-        allowsMultipleSelection: true, // Permitir múltiples selecciones
+        allowsMultipleSelection: true,
         quality: 0.6,
         videoQuality: ImagePicker.UIImagePickerControllerQualityType?.Medium || 'medium' as any,
       };
@@ -47,24 +55,25 @@ export default function CreateGiftScreen() {
       if (!result.canceled && user?.id && result.assets) {
         setIsUploading(true);
         try {
-          // 📸 OPTIMIZACIÓN: Procesar y validar cada asset antes de subir
           const processedUris: string[] = [];
-          
+
           for (const asset of result.assets) {
             try {
-              const processedUri = await processMediaAsset(asset, 'memory');
+              const processedUri = await processMediaAsset({
+                uri: asset.uri,
+                type: asset.type,
+                duration: asset.duration ?? undefined
+              }, 'memory');
               if (processedUri) {
                 processedUris.push(processedUri);
               }
             } catch (error: any) {
               console.error('Error procesando asset:', error);
-              // Continuar con el siguiente asset si uno falla
             }
           }
-          
-          // Subir todos los archivos procesados
+
           if (processedUris.length > 0) {
-            const uploadPromises = processedUris.map(uri => 
+            const uploadPromises = processedUris.map(uri =>
               uploadMedia(uri, user.id, 'memories')
             );
             const uploadedUrls = await Promise.all(uploadPromises);
@@ -138,17 +147,16 @@ export default function CreateGiftScreen() {
     }
   };
 
-  // Formatear fecha y hora para mostrar
   const formatDateTime = (date: Date) => {
-    const dateStr = date.toLocaleDateString('es-ES', { 
-      day: 'numeric', 
-      month: 'short', 
-      year: 'numeric' 
+    const dateStr = date.toLocaleDateString('es-ES', {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric'
     });
-    const timeStr = date.toLocaleTimeString('es-ES', { 
-      hour: '2-digit', 
+    const timeStr = date.toLocaleTimeString('es-ES', {
+      hour: '2-digit',
       minute: '2-digit',
-      hour12: true 
+      hour12: true
     });
     return { dateStr, timeStr };
   };
@@ -159,11 +167,15 @@ export default function CreateGiftScreen() {
       return;
     }
 
-    if (giftType === 'timeCapsule') {
+    // Determinar tipo real para backend
+    const isInstant = selectedOption === 'instant';
+    const isTimeCapsule = selectedOption === 'message' || selectedOption === 'memory';
+
+    if (isTimeCapsule) {
       const minDate = new Date();
       minDate.setDate(minDate.getDate() + 1);
       if (unlockDate <= minDate) {
-        Alert.alert('Error', 'La fecha de apertura debe ser al menos mañana');
+        Alert.alert('Fecha inválida', 'Para ser una cápsula del tiempo, la fecha de apertura debe ser al menos mañana.');
         return;
       }
     }
@@ -171,7 +183,7 @@ export default function CreateGiftScreen() {
     setIsSaving(true);
     try {
       await createGift({
-        type: giftType === 'timeCapsule' ? 'timeCapsule' : 'fruit',
+        type: isInstant ? 'fruit' : 'timeCapsule',
         recipientEmail: recipientEmail.trim(),
         message: description.trim(),
         content: {
@@ -179,12 +191,22 @@ export default function CreateGiftScreen() {
           description: description,
           mediaUrls: mediaUrls
         },
-        unlockDate: giftType === 'timeCapsule' ? unlockDate.toISOString() : undefined,
+        unlockDate: isTimeCapsule ? unlockDate.toISOString() : undefined,
       });
 
+      let successTitle = 'Regalo Enviado';
+      let successMsg = `Tu regalo ha sido enviado a ${recipientEmail}`;
+      if (selectedOption === 'message') {
+        successTitle = 'Carta Enviada';
+        successMsg = `Tu carta al futuro ha sido programada para ${recipientEmail}`;
+      } else if (selectedOption === 'memory') {
+        successTitle = 'Cápsula Programada';
+        successMsg = `Tu cápsula de recuerdo se abrirá en la fecha elegida.`;
+      }
+
       Alert.alert(
-        'Regalo Enviado',
-        `Tu ${giftType === 'timeCapsule' ? 'cápsula del tiempo' : 'regalo'} ha sido enviado a ${recipientEmail}`,
+        successTitle,
+        successMsg,
         [{ text: 'OK', onPress: () => router.back() }]
       );
     } catch (error: any) {
@@ -194,7 +216,8 @@ export default function CreateGiftScreen() {
     }
   };
 
-  if (!giftType) {
+  // 🖥️ PANTALLA DE SELECCIÓN DE TIPO
+  if (activeStep === 'selection') {
     return (
       <>
         <Stack.Screen
@@ -205,83 +228,108 @@ export default function CreateGiftScreen() {
           }}
         />
         <View style={[styles.container, isDarkMode && styles.containerDark]}>
-          <View style={[styles.header, isDarkMode && styles.headerDark]}>
-            <Gift size={48} color={colors.primary} />
-            <Text style={[styles.headerTitle, isDarkMode && styles.headerTitleDark]}>
-              ¿Qué tipo de regalo quieres crear?
-            </Text>
-            <Text style={[styles.headerSubtitle, isDarkMode && styles.headerSubtitleDark]}>
-              Elige entre un regalo instantáneo o una cápsula del tiempo
-            </Text>
-          </View>
+          <Text style={[styles.headerTitle, isDarkMode && styles.textWhite]}>
+            ¿Qué deseas regalar hoy?
+          </Text>
 
-          <TouchableOpacity
-            style={[styles.giftTypeOption, isDarkMode && styles.giftTypeOptionDark]}
-            onPress={() => setGiftType('instant')}
-          >
-            <View style={[styles.giftTypeIcon, { backgroundColor: colors.primary + '20' }]}>
-              <Send size={32} color={colors.primary} />
-            </View>
-            <View style={styles.giftTypeContent}>
-              <Text style={[styles.giftTypeTitle, isDarkMode && styles.giftTypeTitleDark]}>
-                Regalo Instantáneo
-              </Text>
-              <Text style={[styles.giftTypeDescription, isDarkMode && styles.giftTypeDescriptionDark]}>
-                El destinatario podrá abrir y ver tu regalo inmediatamente
-              </Text>
-            </View>
-          </TouchableOpacity>
+          <ScrollView style={{ marginTop: 20 }}>
+            {/* OPCIÓN 1: CÁPSULA DE MENSAJE */}
+            <TouchableOpacity
+              style={[styles.giftCard, isDarkMode && styles.giftCardDark]}
+              onPress={() => handleSelectOption('message')}
+            >
+              <View style={[styles.iconCircle, { backgroundColor: '#E3F2FD' }]}>
+                <Mail size={32} color="#1565C0" />
+              </View>
+              <View style={styles.cardContent}>
+                <Text style={[styles.cardTitle, isDarkMode && styles.textWhite]}>Cápsula de Mensaje</Text>
+                <Text style={[styles.cardDesc, isDarkMode && styles.textLight]}>
+                  Escribe una carta emotiva para el futuro.
+                </Text>
+              </View>
+            </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[styles.giftTypeOption, isDarkMode && styles.giftTypeOptionDark]}
-            onPress={() => setGiftType('timeCapsule')}
-          >
-            <View style={[styles.giftTypeIcon, { backgroundColor: colors.warning + '20' }]}>
-              <Clock size={32} color={colors.warning} />
-            </View>
-            <View style={styles.giftTypeContent}>
-              <Text style={[styles.giftTypeTitle, isDarkMode && styles.giftTypeTitleDark]}>
-                Cápsula del Tiempo
-              </Text>
-              <Text style={[styles.giftTypeDescription, isDarkMode && styles.giftTypeDescriptionDark]}>
-                El regalo se abrirá automáticamente en una fecha específica que elijas
-              </Text>
-            </View>
-          </TouchableOpacity>
+            {/* OPCIÓN 2: CÁPSULA DE RECUERDO */}
+            <TouchableOpacity
+              style={[styles.giftCard, isDarkMode && styles.giftCardDark]}
+              onPress={() => handleSelectOption('memory')}
+            >
+              <View style={[styles.iconCircle, { backgroundColor: '#F3E5F5' }]}>
+                <Gift size={32} color="#7B1FA2" />
+              </View>
+              <View style={styles.cardContent}>
+                <Text style={[styles.cardTitle, isDarkMode && styles.textWhite]}>Cápsula de Recuerdo</Text>
+                <Text style={[styles.cardDesc, isDarkMode && styles.textLight]}>
+                  Envía una foto o video especial junto texto para abrir en una fecha clave.
+                </Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* OPCIÓN 3: REGALO INSTANTÁNEO */}
+            <TouchableOpacity
+              style={[styles.giftCard, isDarkMode && styles.giftCardDark]}
+              onPress={() => handleSelectOption('instant')}
+            >
+              <View style={[styles.iconCircle, { backgroundColor: '#E8F5E9' }]}>
+                <Send size={32} color="#2E7D32" />
+              </View>
+              <View style={styles.cardContent}>
+                <Text style={[styles.cardTitle, isDarkMode && styles.textWhite]}>Regalo Instantáneo</Text>
+                <Text style={[styles.cardDesc, isDarkMode && styles.textLight]}>
+                  Comparte un recuerdo de tu árbol ahora mismo.
+                </Text>
+              </View>
+            </TouchableOpacity>
+          </ScrollView>
         </View>
       </>
     );
   }
 
+  // 📝 PANTALLA DE FORMULARIO
+  const getHeaderTitle = () => {
+    switch (selectedOption) {
+      case 'message': return 'Escribir Carta';
+      case 'memory': return 'Cápsula de Recuerdo';
+      case 'instant': return 'Regalo Instantáneo';
+      default: return 'Nuevo Regalo';
+    }
+  };
+
   return (
     <>
       <Stack.Screen
         options={{
-          title: giftType === 'timeCapsule' ? 'Cápsula del Tiempo' : 'Regalo Instantáneo',
+          title: getHeaderTitle(),
           headerStyle: { backgroundColor: isDarkMode ? '#1E1E1E' : colors.primary },
           headerTintColor: colors.white,
         }}
       />
 
       <ScrollView style={[styles.container, isDarkMode && styles.containerDark]}>
+
+        {/* Input: Título */}
         <View style={styles.formGroup}>
-          <Text style={[styles.label, isDarkMode && styles.labelDark]}>Título del regalo</Text>
+          <Text style={[styles.label, isDarkMode && styles.labelDark]}>Título</Text>
           <TextInput
             style={[styles.input, isDarkMode && styles.inputDark]}
             value={title}
             onChangeText={setTitle}
-            placeholder="Ej: Para mi querida hermana"
+            placeholder={selectedOption === 'message' ? "Ej: Para leer en tu boda" : "Ej: Un recuerdo especial"}
             placeholderTextColor={isDarkMode ? '#666' : colors.gray}
           />
         </View>
 
+        {/* Input: Descripción / Mensaje */}
         <View style={styles.formGroup}>
-          <Text style={[styles.label, isDarkMode && styles.labelDark]}>Mensaje / Recuerdo</Text>
+          <Text style={[styles.label, isDarkMode && styles.labelDark]}>
+            {selectedOption === 'message' ? 'Tu Carta' : 'Mensaje / Descripción'}
+          </Text>
           <TextInput
             style={[styles.textArea, isDarkMode && styles.inputDark]}
             value={description}
             onChangeText={setDescription}
-            placeholder="Escribe un mensaje especial..."
+            placeholder={selectedOption === 'message' ? "Querido yo del futuro..." : "Escribe aquí..."}
             placeholderTextColor={isDarkMode ? '#666' : colors.gray}
             multiline
             numberOfLines={6}
@@ -289,8 +337,9 @@ export default function CreateGiftScreen() {
           />
         </View>
 
+        {/* Input: Email */}
         <View style={styles.formGroup}>
-          <Text style={[styles.label, isDarkMode && styles.labelDark]}>Email del destinatario</Text>
+          <Text style={[styles.label, isDarkMode && styles.labelDark]}>Enviar a (Email)</Text>
           <TextInput
             style={[styles.input, isDarkMode && styles.inputDark]}
             value={recipientEmail}
@@ -302,48 +351,32 @@ export default function CreateGiftScreen() {
           />
         </View>
 
-        {giftType === 'timeCapsule' && (() => {
+        {/* Selector de Fecha (Solo para Cápsulas) */}
+        {(selectedOption === 'message' || selectedOption === 'memory') && (() => {
           const { dateStr, timeStr } = formatDateTime(unlockDate);
           const minDate = new Date();
           minDate.setDate(minDate.getDate() + 1);
-          
+
           return (
             <View style={styles.formGroup}>
-              <Text style={[styles.label, isDarkMode && styles.labelDark]}>Fecha y hora de apertura</Text>
-              
-              {Platform.OS === 'android' ? (
-                <View style={styles.dateTimeButtonsContainer}>
-                  <TouchableOpacity
-                    style={[styles.datePickerButton, isDarkMode && styles.datePickerButtonDark]}
-                    onPress={showDatepicker}
-                  >
-                    <Calendar size={20} color={isDarkMode ? colors.white : colors.text} />
-                    <Text style={[styles.dateText, isDarkMode && styles.dateTextDark]}>
-                      📅 Fecha: {dateStr}
-                    </Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity
-                    style={[styles.datePickerButton, isDarkMode && styles.datePickerButtonDark]}
-                    onPress={showTimepicker}
-                  >
-                    <Clock size={20} color={isDarkMode ? colors.white : colors.text} />
-                    <Text style={[styles.dateText, isDarkMode && styles.dateTextDark]}>
-                      ⏰ Hora: {timeStr}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              ) : (
+              <Text style={[styles.label, isDarkMode && styles.labelDark]}>Fecha de Apertura</Text>
+              <View style={styles.dateContainer}>
                 <TouchableOpacity
-                  style={[styles.datePickerButton, isDarkMode && styles.datePickerButtonDark]}
+                  style={[styles.dateButton, isDarkMode && styles.dateButtonDark]}
                   onPress={showDatepicker}
                 >
-                  <Calendar size={20} color={isDarkMode ? colors.white : colors.text} />
-                  <Text style={[styles.dateText, isDarkMode && styles.dateTextDark]}>
-                    {dateStr} a las {timeStr}
-                  </Text>
+                  <Calendar size={20} color={isDarkMode ? '#FFF' : '#555'} />
+                  <Text style={[styles.dateButtonText, isDarkMode && styles.textWhite]}>{dateStr}</Text>
                 </TouchableOpacity>
-              )}
+
+                <TouchableOpacity
+                  style={[styles.dateButton, isDarkMode && styles.dateButtonDark]}
+                  onPress={showTimepicker}
+                >
+                  <Clock size={20} color={isDarkMode ? '#FFF' : '#555'} />
+                  <Text style={[styles.dateButtonText, isDarkMode && styles.textWhite]}>{timeStr}</Text>
+                </TouchableOpacity>
+              </View>
 
               {showDatePicker && (
                 <DateTimePicker
@@ -352,48 +385,44 @@ export default function CreateGiftScreen() {
                   display="default"
                   onChange={handleDateChange}
                   minimumDate={minDate}
-                  themeVariant={isDarkMode ? 'dark' : 'light'}
                 />
               )}
-
               {showTimePicker && Platform.OS === 'android' && (
                 <DateTimePicker
                   value={unlockDate}
                   mode="time"
-                  display="default"
                   onChange={handleDateChange}
-                  themeVariant={isDarkMode ? 'dark' : 'light'}
                 />
               )}
-
               <Text style={[styles.helperText, isDarkMode && styles.helperTextDark]}>
-                La cápsula se abrirá automáticamente el {dateStr} a las {timeStr}
+                Se desbloqueará el {dateStr} a las {timeStr}
               </Text>
             </View>
           );
         })()}
 
+        {/* Selector de Media (Opcional en Message, Recomendado en Memory/Instant) */}
         <View style={styles.formGroup}>
-          <Text style={[styles.label, isDarkMode && styles.labelDark]}>Adjuntar recuerdos (Fotos/Videos)</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <Text style={[styles.label, isDarkMode && styles.labelDark]}>
+            {selectedOption === 'message' ? 'Adjuntar foto (opcional)' : 'Adjuntar Recuerdos'}
+          </Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
             <TouchableOpacity style={styles.attachButton} onPress={handlePickImage}>
               {isUploading ? <ActivityIndicator size="small" color={colors.primary} /> : <ImageIcon size={24} color={colors.primary} />}
-              <Text style={styles.attachText}>Añadir</Text>
+              <Text style={styles.attachText}>Seleccionar</Text>
             </TouchableOpacity>
 
-            <ScrollView horizontal style={{ marginLeft: 10 }}>
-              {mediaUrls.map((url, i) => (
-                <View key={i} style={{ position: 'relative', marginRight: 10 }}>
-                  <Image source={{ uri: url }} style={{ width: 50, height: 50, borderRadius: 8 }} />
-                  <TouchableOpacity
-                    style={styles.removeImageBtn}
-                    onPress={() => removeImage(i)}
-                  >
-                    <X size={12} color="#FFF" />
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </ScrollView>
+            {mediaUrls.map((url, i) => (
+              <View key={i} style={{ position: 'relative' }}>
+                <Image source={{ uri: url }} style={{ width: 60, height: 60, borderRadius: 8 }} />
+                <TouchableOpacity
+                  style={styles.removeImageBtn}
+                  onPress={() => removeImage(i)}
+                >
+                  <X size={12} color="#FFF" />
+                </TouchableOpacity>
+              </View>
+            ))}
           </View>
         </View>
 
@@ -410,9 +439,13 @@ export default function CreateGiftScreen() {
             <ActivityIndicator color="#FFF" />
           ) : (
             <Text style={styles.createButtonText}>
-              {giftType === 'timeCapsule' ? 'Sellar Cápsula' : 'Enviar Regalo'}
+              {selectedOption === 'message' ? 'Sellar y Enviar' : 'Enviar Regalo'}
             </Text>
           )}
+        </TouchableOpacity>
+
+        <TouchableOpacity style={{ alignSelf: 'center', marginBottom: 40 }} onPress={() => setActiveStep('selection')}>
+          <Text style={{ color: colors.gray }}>Cancelar / Volver</Text>
         </TouchableOpacity>
       </ScrollView>
     </>
@@ -420,40 +453,57 @@ export default function CreateGiftScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background, padding: 16 },
+  container: { flex: 1, backgroundColor: '#F5F7FA', padding: 20 },
   containerDark: { backgroundColor: '#121212' },
-  header: { alignItems: 'center', padding: 32, backgroundColor: colors.white, borderRadius: 16, marginBottom: 32 },
-  headerDark: { backgroundColor: '#1E1E1E' },
-  headerTitle: { fontSize: 24, fontWeight: 'bold', color: colors.text, marginTop: 16, marginBottom: 8, textAlign: 'center' },
-  headerTitleDark: { color: colors.white },
-  headerSubtitle: { fontSize: 16, color: colors.textLight, textAlign: 'center', lineHeight: 22 },
-  headerSubtitleDark: { color: '#AAA' },
-  giftTypeOption: { flexDirection: 'row', backgroundColor: colors.white, borderRadius: 16, padding: 20, marginBottom: 16, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 4 },
-  giftTypeOptionDark: { backgroundColor: '#1E1E1E' },
-  giftTypeIcon: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center', marginRight: 16 },
-  giftTypeContent: { flex: 1 },
-  giftTypeTitle: { fontSize: 18, fontWeight: 'bold', color: colors.text, marginBottom: 4 },
-  giftTypeTitleDark: { color: colors.white },
-  giftTypeDescription: { fontSize: 14, color: colors.textLight, lineHeight: 20 },
-  giftTypeDescriptionDark: { color: '#AAA' },
+  headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#333', textAlign: 'center', marginBottom: 10 },
+  textWhite: { color: '#FFF' },
+  textLight: { color: '#AAA' },
+
+  // Cards
+  giftCard: {
+    flexDirection: 'row',
+    backgroundColor: '#FFF',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 5,
+    elevation: 3,
+  },
+  giftCardDark: { backgroundColor: '#1E1E1E' },
+  iconCircle: {
+    width: 60, height: 60, borderRadius: 30,
+    justifyContent: 'center', alignItems: 'center',
+    marginRight: 15,
+  },
+  cardContent: { flex: 1 },
+  cardTitle: { fontSize: 18, fontWeight: 'bold', color: '#333', marginBottom: 4 },
+  cardDesc: { fontSize: 13, color: '#666', lineHeight: 18 },
+
+  // Forms
   formGroup: { marginBottom: 20 },
-  label: { fontSize: 16, fontWeight: 'bold', color: colors.text, marginBottom: 8 },
-  labelDark: { color: colors.white },
-  input: { backgroundColor: colors.white, borderRadius: 8, padding: 12, fontSize: 16, borderWidth: 1, borderColor: colors.border },
-  inputDark: { backgroundColor: '#1E1E1E', borderColor: '#333', color: colors.white },
-  textArea: { backgroundColor: colors.white, borderRadius: 8, padding: 12, fontSize: 16, borderWidth: 1, borderColor: colors.border, minHeight: 120 },
-  createButton: { backgroundColor: colors.primary, borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 16, marginBottom: 32 },
+  label: { fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 8 },
+  labelDark: { color: '#FFF' },
+  input: { backgroundColor: '#FFF', borderRadius: 12, padding: 14, fontSize: 16, borderWidth: 1, borderColor: '#E0E0E0' },
+  inputDark: { backgroundColor: '#2C2C2C', borderColor: '#444', color: '#FFF' },
+  textArea: { backgroundColor: '#FFF', borderRadius: 12, padding: 14, fontSize: 16, borderWidth: 1, borderColor: '#E0E0E0', minHeight: 120 },
+
+  dateContainer: { flexDirection: 'row', gap: 10 },
+  dateButton: { flex: 1, flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#DDD', justifyContent: 'center', gap: 8 },
+  dateButtonDark: { backgroundColor: '#2C2C2C', borderColor: '#444' },
+  dateButtonText: { fontSize: 15, color: '#333' },
+  helperText: { fontSize: 12, color: '#888', marginTop: 6 },
+  helperTextDark: { color: '#AAA' },
+
+  attachButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#E3F2FD', padding: 12, borderRadius: 10 },
+  attachText: { color: '#1565C0', fontWeight: 'bold', marginLeft: 8 },
+  removeImageBtn: { position: 'absolute', top: -6, right: -6, backgroundColor: '#EF5350', width: 20, height: 20, borderRadius: 10, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#FFF' },
+
+  createButton: { backgroundColor: colors.primary, borderRadius: 14, paddingVertical: 18, alignItems: 'center', marginTop: 10, marginBottom: 20, shadowColor: colors.primary, shadowOpacity: 0.3, shadowOffset: { width: 0, height: 4 }, elevation: 4 },
   createButtonDark: { backgroundColor: colors.primary },
-  createButtonDisabled: { backgroundColor: colors.gray },
-  createButtonText: { color: colors.white, fontSize: 16, fontWeight: 'bold' },
-  attachButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary + '15', padding: 10, borderRadius: 10 },
-  attachText: { color: colors.primary, fontWeight: 'bold', marginLeft: 6 },
-  removeImageBtn: { position: 'absolute', top: -5, right: -5, backgroundColor: 'red', width: 18, height: 18, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
-  dateTimeButtonsContainer: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
-  datePickerButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 8, padding: 12, borderWidth: 1, borderColor: colors.border, gap: 8 },
-  datePickerButtonDark: { backgroundColor: '#1E1E1E', borderColor: '#333' },
-  dateText: { fontSize: 16, color: colors.text },
-  dateTextDark: { color: colors.white },
-  helperText: { fontSize: 12, color: colors.textLight, marginTop: 8 },
-  helperTextDark: { color: '#AAA' }
+  createButtonDisabled: { backgroundColor: '#CCC', shadowOpacity: 0 },
+  createButtonText: { color: '#FFF', fontSize: 18, fontWeight: 'bold' },
 });
