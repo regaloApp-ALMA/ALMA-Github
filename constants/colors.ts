@@ -14,7 +14,14 @@ const colors = {
   gray: '#95A5A6',
   lightGray: '#ECEFF1',
   transparent: 'transparent',
-  
+
+  // Premium Dark Mode Palette
+  darkBackground: '#121212',
+  darkCard: '#1E1E1E',
+  darkText: '#EAEAEA',
+  darkTextSecondary: '#A0A0A0',
+  darkBorder: '#333333',
+
   // Branch category colors - updated to match the tree design in the image
   family: '#FF6B35',    // Orange
   travel: '#4A90E2',    // Blue

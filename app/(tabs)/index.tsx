@@ -10,6 +10,7 @@ import { Heart, Users, Gift, Trees, Upload, Flame, Calendar, Lightbulb, RefreshC
 import { useThemeStore } from '@/stores/themeStore';
 import StreakModal from '@/components/StreakModal';
 import { useFocusEffect } from 'expo-router';
+import SafeImage from '@/components/SafeImage';
 
 // --- BANCO DE IDEAS (Frontend estático para inspiración) ---
 const MEMORY_PROMPTS = [
@@ -156,11 +157,25 @@ export default function HomeScreen() {
           {isLoading ? (
             <ActivityIndicator color={colors.primary} style={{ marginTop: 10 }} />
           ) : todayMemories && todayMemories.length > 0 ? (
-            todayMemories.map((memory) => {
-              if (!memory || !memory.id) return null; // Protección contra nulos
+            todayMemories.map((memory: any) => {
+              if (!memory || !memory.id) return null;
+
+              const hasImage = memory.mediaUrls && memory.mediaUrls.length > 0;
+              const imageUrl = hasImage ? memory.mediaUrls[0] : null;
+
               return (
                 <View key={memory.id} style={[styles.card, isDarkMode && styles.cardDark]}>
-                  <View style={[styles.cardLeftBorder, { backgroundColor: memory.type === 'birthday' ? colors.warning : colors.primary }]} />
+                  {/* Borde izquierdo (si no hay imagen) o Imagen (si la hay) */}
+                  {hasImage ? (
+                    <SafeImage
+                      source={{ uri: imageUrl }}
+                      style={styles.cardImage}
+                      containerStyle={styles.cardImageContainer}
+                    />
+                  ) : (
+                    <View style={[styles.cardLeftBorder, { backgroundColor: memory.type === 'birthday' ? colors.warning : colors.primary }]} />
+                  )}
+
                   <View style={styles.cardContent}>
                     <Text style={[styles.cardTitle, isDarkMode && styles.textWhite]}>{memory.title}</Text>
                     <Text style={[styles.cardSubtitle, isDarkMode && styles.textLight]} numberOfLines={2}>
@@ -368,6 +383,20 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 16, fontWeight: 'bold', color: '#333', marginBottom: 4 },
   cardSubtitle: { fontSize: 13, color: '#666', marginBottom: 12 },
   cardIcon: { justifyContent: 'flex-start', paddingTop: 4 },
+
+  cardImageContainer: {
+    width: 80,
+    height: '100%',
+    marginRight: 0,
+    backgroundColor: '#f0f0f0', // Placeholder bg
+  },
+  cardImage: {
+    width: 80,
+    height: '100%',
+    borderRadius: 8,
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
+  },
 
   actionButtonSmall: {
     backgroundColor: colors.primary,

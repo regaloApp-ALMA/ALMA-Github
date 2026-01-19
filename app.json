@@ -27,10 +27,17 @@
     },
     "web": {
       "favicon": "./assets/favicon.png",
-      "title": "ALMA: Tu legado digital",
+      "title": "ALMA",
       "name": "ALMA",
       "shortName": "ALMA",
       "display": "standalone",
+      "themeColor": "#FFFFFF",
+      "backgroundColor": "#FFFFFF",
+      "appleTouchIcon": "./assets/icon.png",
+      "meta": {
+        "apple-mobile-web-app-capable": "yes",
+        "apple-mobile-web-app-status-bar-style": "black-translucent"
+      },
       "splash": {
         "image": "./assets/splash.png",
         "resizeMode": "contain",
