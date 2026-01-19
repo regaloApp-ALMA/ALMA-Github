@@ -46,6 +46,27 @@ export default function AddMemoryManualScreen() {
       const result = await ImagePicker.launchImageLibraryAsync(pickerOptions);
 
       if (!result.canceled && result.assets) {
+        // VALIDACIÓN DE LÍMITES
+        const currentImages = mediaUrls.filter(url => !url.match(/\.(mp4|mov|m4v)$/i)).length;
+        const currentVideos = mediaUrls.filter(url => url.match(/\.(mp4|mov|m4v)$/i)).length;
+
+        let newImagesCount = 0;
+        let newVideosCount = 0;
+
+        for (const asset of result.assets) {
+          if (asset.type === 'video' || asset.uri.match(/\.(mp4|mov|m4v)$/i)) newVideosCount++;
+          else newImagesCount++;
+        }
+
+        if (currentImages + newImagesCount > 10) {
+          Alert.alert('Límite excedido', 'Solo puedes adjuntar un máximo de 10 fotos.');
+          return;
+        }
+        if (currentVideos + newVideosCount > 3) {
+          Alert.alert('Límite excedido', 'Solo puedes adjuntar un máximo de 3 videos.');
+          return;
+        }
+
         // 📸 OPTIMIZACIÓN: Procesar y validar cada asset
         const processedUris: string[] = [];
 
@@ -104,9 +125,20 @@ export default function AddMemoryManualScreen() {
       if (mediaUrls.length > 0) {
         setIsUploading(true);
         try {
-          // Filtrar URIs locales (file://) y subirlas
-          const localUris = mediaUrls.filter(uri => uri.startsWith('file://') || uri.startsWith('content://'));
-          const alreadyUploaded = mediaUrls.filter(uri => !uri.startsWith('file://') && !uri.startsWith('content://'));
+          // Filtrar URIs locales (file://, content://, blob:, data:) y subirlas
+          const localUris = mediaUrls.filter(uri =>
+            uri.startsWith('file://') ||
+            uri.startsWith('content://') ||
+            uri.startsWith('blob:') ||
+            uri.startsWith('data:')
+          );
+
+          const alreadyUploaded = mediaUrls.filter(uri =>
+            !uri.startsWith('file://') &&
+            !uri.startsWith('content://') &&
+            !uri.startsWith('blob:') &&
+            !uri.startsWith('data:')
+          );
 
           // Subir solo las que son locales
           if (localUris.length > 0) {
@@ -215,9 +247,14 @@ export default function AddMemoryManualScreen() {
         </View>
 
         <View style={styles.group}>
-          <Text style={[styles.label, isDarkMode && styles.textWhite]}>
-            Fotos y Videos {mediaUrls.length > 0 && `(${mediaUrls.length})`}
-          </Text>
+          <View style={{ marginBottom: 8, flexDirection: 'column' }}>
+            <Text style={[styles.label, isDarkMode && styles.textWhite, { marginBottom: 2 }]}>
+              Fotos y Videos {mediaUrls.length > 0 && `(${mediaUrls.length})`}
+            </Text>
+            <Text style={{ fontSize: 12, color: colors.gray, opacity: 0.8 }}>
+              Límites: Máx 10 fotos, Máx 3 videos (15s c/u).
+            </Text>
+          </View>
 
           {mediaUrls.length > 0 ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.mediaScroll}>

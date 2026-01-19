@@ -649,6 +649,21 @@ export const useTreeStore = create<TreeState>((set, get) => ({
         position: fruit.position || { x: 0, y: 0 },
       };
 
+      // VALIDACIÓN DE SEGURIDAD: Prevenir guardado de blobs/files
+      if (insertData.media_urls && Array.isArray(insertData.media_urls)) {
+        const invalidUrls = insertData.media_urls.filter((url: string) =>
+          url.startsWith('blob:') ||
+          url.startsWith('file:') ||
+          url.startsWith('content:') ||
+          url.startsWith('data:')
+        );
+
+        if (invalidUrls.length > 0) {
+          console.error('❌ INTENTO DE GUARDAR URLS TEMPORALES:', invalidUrls);
+          throw new Error(`Error crítico: Se intentó guardar ${invalidUrls.length} archivo(s) sin subir correctamente. Por favor intenta de nuevo.`);
+        }
+      }
+
       console.log('📝 Insertando fruto:', insertData);
 
       const { data: newFruit, error } = await supabase

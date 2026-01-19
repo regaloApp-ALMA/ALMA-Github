@@ -38,31 +38,31 @@ export default function FruitDetailsScreen() {
   const handleDelete = () => {
     console.log("🗑️ BOTÓN PULSADO - handleDelete");
     console.log("🗑️ ID de recuerdo:", id);
-    
+
     if (isDeleting) {
       console.log('⚠️ Ya se está borrando, ignorando clic');
       return;
     }
-    
+
     // Solución robusta: usar window.confirm en web como fallback
     if (Platform.OS === 'web') {
       const confirmed = window.confirm("¿Eliminar Recuerdo?\n\nEsta acción es irreversible y borrará todo el contenido asociado.");
       if (confirmed) {
         (async () => {
           setIsDeleting(true);
-            try {
-              await deleteFruit(id);
-              console.log('✅ Recuerdo borrado exitosamente en DB');
-              
-              // Actualizar tanto el árbol como los recuerdos de la pantalla de inicio
-              await Promise.all([
-                fetchMyTree(),
-                fetchHomeData() // Actualizar el apartado de Recuerdos
-              ]);
-              
-              router.dismissAll();
-              router.replace('/(tabs)/tree');
-            } catch (e: any) {
+          try {
+            await deleteFruit(id);
+            console.log('✅ Recuerdo borrado exitosamente en DB');
+
+            // Actualizar tanto el árbol como los recuerdos de la pantalla de inicio
+            await Promise.all([
+              fetchMyTree(),
+              fetchHomeData() // Actualizar el apartado de Recuerdos
+            ]);
+
+            router.dismissAll();
+            router.replace('/(tabs)/tree');
+          } catch (e: any) {
             console.error('❌ Error borrando recuerdo:', e);
             setIsDeleting(false);
             window.alert("Error: " + (e.message || "No se pudo eliminar el recuerdo"));
@@ -71,35 +71,35 @@ export default function FruitDetailsScreen() {
       }
       return;
     }
-    
+
     // Para móvil, usar Alert normal
     try {
       Alert.alert(
         "¿Eliminar Recuerdo?",
         "Esta acción es irreversible y borrará todo el contenido asociado.",
         [
-          { 
-            text: "Cancelar", 
+          {
+            text: "Cancelar",
             style: "cancel",
             onPress: () => console.log('❌ Cancelado por usuario')
           },
-          { 
-            text: "Eliminar", 
-            style: "destructive", 
+          {
+            text: "Eliminar",
+            style: "destructive",
             onPress: async () => {
               console.log('✅ Usuario confirmó borrado de recuerdo');
               setIsDeleting(true);
-              
+
               try {
                 await deleteFruit(id);
                 console.log('✅ Recuerdo borrado exitosamente en DB');
-                
+
                 // Actualizar tanto el árbol como los recuerdos de la pantalla de inicio
                 await Promise.all([
                   fetchMyTree(),
                   fetchHomeData() // Actualizar el apartado de Recuerdos
                 ]);
-                
+
                 // Navegación agresiva
                 router.dismissAll();
                 router.replace('/(tabs)/tree');
@@ -123,13 +123,13 @@ export default function FruitDetailsScreen() {
             setIsDeleting(true);
             try {
               await deleteFruit(id);
-              
+
               // Actualizar tanto el árbol como los recuerdos de la pantalla de inicio
               await Promise.all([
                 fetchMyTree(),
                 fetchHomeData() // Actualizar el apartado de Recuerdos
               ]);
-              
+
               router.dismissAll();
               router.replace('/(tabs)/tree');
             } catch (e: any) {
@@ -174,8 +174,8 @@ export default function FruitDetailsScreen() {
         '¡Compartido!',
         `Has compartido "${fruit.title}" con ${recipientEmail}. Cuando lo acepte, aparecerá en su árbol.`,
         [
-          { 
-            text: 'OK', 
+          {
+            text: 'OK',
             onPress: () => {
               setShowShareModal(false);
               setRecipientEmail('');
@@ -206,7 +206,7 @@ export default function FruitDetailsScreen() {
   const images = mediaUrls.filter(url => !isVideoUrl(url));
   const videos = mediaUrls.filter(url => isVideoUrl(url));
   const allMedia = [...images, ...videos];
-  
+
   // Obtener la primera imagen para la cabecera (o frame de video)
   const headerMedia = images.length > 0 ? images[0] : (videos.length > 0 ? videos[0] : null);
   const isHeaderVideo = headerMedia && isVideoUrl(headerMedia);
@@ -221,7 +221,7 @@ export default function FruitDetailsScreen() {
           headerTransparent: true,
           headerRight: () => (
             <View style={styles.headerActions}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 onPress={() => router.push({ pathname: '/edit-fruit', params: { id } })}
                 style={{ marginRight: 10, marginTop: 10 }}
               >
@@ -229,19 +229,19 @@ export default function FruitDetailsScreen() {
                   <Edit3 size={20} color={colors.primary} />
                 </View>
               </TouchableOpacity>
-              <TouchableOpacity 
-                onPress={() => setShowShareModal(true)} 
+              <TouchableOpacity
+                onPress={() => setShowShareModal(true)}
                 style={{ marginRight: 10, marginTop: 10 }}
               >
                 <View style={styles.iconBg}>
                   <Share2 size={20} color={colors.primary} />
                 </View>
               </TouchableOpacity>
-              <TouchableOpacity 
-                onPress={handleDelete} 
-                style={{ 
-                  marginRight: 10, 
-                  marginTop: 10, 
+              <TouchableOpacity
+                onPress={handleDelete}
+                style={{
+                  marginRight: 10,
+                  marginTop: 10,
                   opacity: isDeleting ? 0.5 : 1,
                   zIndex: 1000
                 }}
@@ -273,7 +273,28 @@ export default function FruitDetailsScreen() {
                 useNativeControls={false}
               />
             ) : (
-              <Image source={{ uri: headerMedia }} style={styles.coverImage} />
+              <View>
+                <Image
+                  source={{ uri: headerMedia }}
+                  style={styles.coverImage}
+                  ref={(ref) => {
+                    // Verificación manual de prefijos malos si es necesario
+                    if (headerMedia.startsWith('blob:') || headerMedia.startsWith('file:')) {
+                      // Podríamos forzar error, pero mejor dejar que onError maneje la UI
+                    }
+                  }}
+                  onError={(e) => {
+                    console.log('❌ Error cargando imagen:', headerMedia);
+                  }}
+                />
+                {/* Capa de error si la URL es obviamente inválida (blob/file) */}
+                {(headerMedia.startsWith('blob:') || headerMedia.startsWith('file:')) && (
+                  <View style={[styles.coverImage, { position: 'absolute', backgroundColor: '#eee', justifyContent: 'center', alignItems: 'center' }]}>
+                    <Text style={{ color: colors.error, fontWeight: 'bold' }}>⚠️ Imagen no sincronizada</Text>
+                    <Text style={{ color: '#666', fontSize: 12 }}>Edita para resubir</Text>
+                  </View>
+                )}
+              </View>
             )}
             {/* Botón de álbum siempre visible si hay al menos 1 media */}
             {allMedia.length > 0 && (
@@ -464,7 +485,7 @@ const styles = StyleSheet.create({
   textLight: { color: '#CCC' },
   iconBg: { backgroundColor: 'rgba(255,255,255,0.8)', padding: 8, borderRadius: 20 },
   headerActions: { flexDirection: 'row' },
-  
+
   // Modal Styles
   modalOverlay: {
     flex: 1,
@@ -555,7 +576,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: 'bold'
   },
-  
+
   // Galería Styles
   coverContainer: {
     position: 'relative',

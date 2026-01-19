@@ -3,6 +3,7 @@ import { supabase } from './supabase';
 import * as FileSystem from 'expo-file-system';
 import { decode } from 'base64-arraybuffer';
 import * as ImageManipulator from 'expo-image-manipulator';
+import { Platform } from 'react-native';
 
 // Función helper para obtener el formato correcto
 const getImageFormat = () => {
@@ -37,11 +38,19 @@ export const uploadMedia = async (uri: string, userId: string, bucket: string): 
 
         if (isVideo) {
             // Para videos: subir directamente sin compresión adicional
-            // El vídeo ya viene comprimido por el sistema operativo gracias a videoQuality y videoExportPreset
-            const base64 = await FileSystem.readAsStringAsync(uri, {
-                encoding: 'base64' as any,
-            });
-            const fileData = decode(base64);
+            // Para videos: subir directamente sin compresión adicional
+            let fileData: any;
+
+            if (Platform.OS === 'web') {
+                const response = await fetch(uri);
+                const blob = await response.blob();
+                fileData = blob;
+            } else {
+                const base64 = await FileSystem.readAsStringAsync(uri, {
+                    encoding: 'base64' as any,
+                });
+                fileData = decode(base64);
+            }
 
             // Detectar extensión del archivo
             const fileExt = uri.split('.').pop()?.toLowerCase() || 'mp4';

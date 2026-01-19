@@ -53,6 +53,28 @@ export default function CreateGiftScreen() {
       const result = await ImagePicker.launchImageLibraryAsync(pickerOptions);
 
       if (!result.canceled && user?.id && result.assets) {
+        // VALIDACIÓN DE LÍMITES
+        const currentImages = mediaUrls.filter(url => !url.match(/\.(mp4|mov|m4v)$/i)).length;
+        const currentVideos = mediaUrls.filter(url => url.match(/\.(mp4|mov|m4v)$/i)).length;
+
+        let newImagesCount = 0;
+        let newVideosCount = 0;
+
+        // Contar qué intenta subir el usuario
+        for (const asset of result.assets) {
+          if (asset.type === 'video' || asset.uri.match(/\.(mp4|mov|m4v)$/i)) newVideosCount++;
+          else newImagesCount++;
+        }
+
+        if (currentImages + newImagesCount > 10) {
+          Alert.alert('Límite excedido', 'Solo puedes adjuntar un máximo de 10 fotos.');
+          return;
+        }
+        if (currentVideos + newVideosCount > 3) {
+          Alert.alert('Límite excedido', 'Solo puedes adjuntar un máximo de 3 videos.');
+          return;
+        }
+
         setIsUploading(true);
         try {
           const processedUris: string[] = [];
@@ -249,7 +271,7 @@ export default function CreateGiftScreen() {
               </View>
             </TouchableOpacity>
 
-            {/* OPCIÓN 2: CÁPSULA DE RECUERDO */}
+            {/* OPCIÓN 2: CÁPSULA DEL TIEMPO (Antes Recuerdo) */}
             <TouchableOpacity
               style={[styles.giftCard, isDarkMode && styles.giftCardDark]}
               onPress={() => handleSelectOption('memory')}
@@ -258,9 +280,9 @@ export default function CreateGiftScreen() {
                 <Gift size={32} color="#7B1FA2" />
               </View>
               <View style={styles.cardContent}>
-                <Text style={[styles.cardTitle, isDarkMode && styles.textWhite]}>Cápsula de Recuerdo</Text>
+                <Text style={[styles.cardTitle, isDarkMode && styles.textWhite]}>Cápsula del Tiempo</Text>
                 <Text style={[styles.cardDesc, isDarkMode && styles.textLight]}>
-                  Envía una foto o video especial junto texto para abrir en una fecha clave.
+                  Envía recuerdos (fotos/videos) para abrir en el futuro.
                 </Text>
               </View>
             </TouchableOpacity>
@@ -276,7 +298,7 @@ export default function CreateGiftScreen() {
               <View style={styles.cardContent}>
                 <Text style={[styles.cardTitle, isDarkMode && styles.textWhite]}>Regalo Instantáneo</Text>
                 <Text style={[styles.cardDesc, isDarkMode && styles.textLight]}>
-                  Comparte un recuerdo de tu árbol ahora mismo.
+                  Comparte un recuerdo ahora mismo.
                 </Text>
               </View>
             </TouchableOpacity>
@@ -290,7 +312,7 @@ export default function CreateGiftScreen() {
   const getHeaderTitle = () => {
     switch (selectedOption) {
       case 'message': return 'Escribir Carta';
-      case 'memory': return 'Cápsula de Recuerdo';
+      case 'memory': return 'Cápsula del Tiempo';
       case 'instant': return 'Regalo Instantáneo';
       default: return 'Nuevo Regalo';
     }
@@ -323,7 +345,7 @@ export default function CreateGiftScreen() {
         {/* Input: Descripción / Mensaje */}
         <View style={styles.formGroup}>
           <Text style={[styles.label, isDarkMode && styles.labelDark]}>
-            {selectedOption === 'message' ? 'Tu Carta' : 'Mensaje / Descripción'}
+            {selectedOption === 'message' ? 'Tu Carta (Solo texto)' : 'Mensaje / Descripción'}
           </Text>
           <TextInput
             style={[styles.textArea, isDarkMode && styles.inputDark]}
@@ -401,30 +423,38 @@ export default function CreateGiftScreen() {
           );
         })()}
 
-        {/* Selector de Media (Opcional en Message, Recomendado en Memory/Instant) */}
-        <View style={styles.formGroup}>
-          <Text style={[styles.label, isDarkMode && styles.labelDark]}>
-            {selectedOption === 'message' ? 'Adjuntar foto (opcional)' : 'Adjuntar Recuerdos'}
-          </Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
-            <TouchableOpacity style={styles.attachButton} onPress={handlePickImage}>
-              {isUploading ? <ActivityIndicator size="small" color={colors.primary} /> : <ImageIcon size={24} color={colors.primary} />}
-              <Text style={styles.attachText}>Seleccionar</Text>
-            </TouchableOpacity>
+        {/* Selector de Media (ESCONDIDO para Cápsula de Mensaje) */}
+        {selectedOption !== 'message' && (
+          <View style={styles.formGroup}>
+            <View style={{ marginBottom: 8 }}>
+              <Text style={[styles.label, isDarkMode && styles.labelDark, { marginBottom: 0 }]}>
+                Adjuntar Recuerdos
+              </Text>
+              <Text style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
+                Límites: Máx 10 fotos, Máx 3 videos (15s c/u).
+              </Text>
+            </View>
 
-            {mediaUrls.map((url, i) => (
-              <View key={i} style={{ position: 'relative' }}>
-                <Image source={{ uri: url }} style={{ width: 60, height: 60, borderRadius: 8 }} />
-                <TouchableOpacity
-                  style={styles.removeImageBtn}
-                  onPress={() => removeImage(i)}
-                >
-                  <X size={12} color="#FFF" />
-                </TouchableOpacity>
-              </View>
-            ))}
+            <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+              <TouchableOpacity style={styles.attachButton} onPress={handlePickImage}>
+                {isUploading ? <ActivityIndicator size="small" color={colors.primary} /> : <ImageIcon size={24} color={colors.primary} />}
+                <Text style={styles.attachText}>Seleccionar</Text>
+              </TouchableOpacity>
+
+              {mediaUrls.map((url, i) => (
+                <View key={i} style={{ position: 'relative' }}>
+                  <Image source={{ uri: url }} style={{ width: 60, height: 60, borderRadius: 8 }} />
+                  <TouchableOpacity
+                    style={styles.removeImageBtn}
+                    onPress={() => removeImage(i)}
+                  >
+                    <X size={12} color="#FFF" />
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
           </View>
-        </View>
+        )}
 
         <TouchableOpacity
           style={[

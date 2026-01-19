@@ -45,11 +45,13 @@ export default function HomeScreen() {
   // Asegurar que el árbol se cargue al enfocar la pantalla
   useFocusEffect(
     React.useCallback(() => {
+      // Actualizar datos cada vez que se enfoca la pantalla
+      fetchHomeData();
       if (!tree) {
         fetchMyTree();
       }
       // No necesitamos limpieza en este caso
-    }, [tree, fetchMyTree])
+    }, [tree]) // Quitamos fetchMyTree de deps para evitar ciclos indeseados si cambia la ref
   );
 
   useEffect(() => {
@@ -154,33 +156,36 @@ export default function HomeScreen() {
           {isLoading ? (
             <ActivityIndicator color={colors.primary} style={{ marginTop: 10 }} />
           ) : todayMemories && todayMemories.length > 0 ? (
-            todayMemories.map((memory) => (
-              <View key={memory.id} style={[styles.card, isDarkMode && styles.cardDark]}>
-                <View style={[styles.cardLeftBorder, { backgroundColor: memory.type === 'birthday' ? colors.warning : colors.primary }]} />
-                <View style={styles.cardContent}>
-                  <Text style={[styles.cardTitle, isDarkMode && styles.textWhite]}>{memory.title}</Text>
-                  <Text style={[styles.cardSubtitle, isDarkMode && styles.textLight]} numberOfLines={2}>
-                    {memory.description}
-                  </Text>
-
-                  <TouchableOpacity
-                    style={[styles.actionButtonSmall, { backgroundColor: memory.type === 'birthday' ? colors.warning : colors.primary }]}
-                    onPress={() => memory.type === 'memory' ? router.push({ pathname: '/fruit-details', params: { id: memory.id } }) : navigateToMemory()}
-                  >
-                    <Text style={styles.actionButtonText}>
-                      {memory.type === 'birthday' ? 'Preparar regalo' : 'Ver recuerdo'}
+            todayMemories.map((memory) => {
+              if (!memory || !memory.id) return null; // Protección contra nulos
+              return (
+                <View key={memory.id} style={[styles.card, isDarkMode && styles.cardDark]}>
+                  <View style={[styles.cardLeftBorder, { backgroundColor: memory.type === 'birthday' ? colors.warning : colors.primary }]} />
+                  <View style={styles.cardContent}>
+                    <Text style={[styles.cardTitle, isDarkMode && styles.textWhite]}>{memory.title}</Text>
+                    <Text style={[styles.cardSubtitle, isDarkMode && styles.textLight]} numberOfLines={2}>
+                      {memory.description}
                     </Text>
-                  </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.actionButtonSmall, { backgroundColor: memory.type === 'birthday' ? colors.warning : colors.primary }]}
+                      onPress={() => memory.type === 'memory' ? router.push({ pathname: '/fruit-details', params: { id: memory.id } }) : navigateToMemory()}
+                    >
+                      <Text style={styles.actionButtonText}>
+                        {memory.type === 'birthday' ? 'Preparar regalo' : 'Ver recuerdo'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.cardIcon}>
+                    {memory.type === 'birthday' ? (
+                      <Gift size={24} color={colors.warning} />
+                    ) : (
+                      <Calendar size={24} color={colors.primary} />
+                    )}
+                  </View>
                 </View>
-                <View style={styles.cardIcon}>
-                  {memory.type === 'birthday' ? (
-                    <Gift size={24} color={colors.warning} />
-                  ) : (
-                    <Calendar size={24} color={colors.primary} />
-                  )}
-                </View>
-              </View>
-            ))
+              )
+            })
           ) : (
             <View style={styles.emptyStateCard}>
               <Text style={[styles.emptyStateText, isDarkMode && styles.textLight]}>

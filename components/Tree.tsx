@@ -157,31 +157,8 @@ export default function Tree({ treeData, isShared = false }: TreeProps = {}) {
     const router = useRouter();
     const zoomRef = useRef<any>(null);
 
-    // 🎯 AUTO-CENTRADO AL ENFOCAR (Mejorado para apuntar a la base)
-    useFocusEffect(
-        React.useCallback(() => {
-            const timer = setTimeout(() => {
-                if (zoomRef.current) {
-                    try {
-                        // Zoom inicial ideal para ver el árbol completo pero cerca
-                        zoomRef.current.zoomTo(0.8);
-
-                        // Calcular el centro horizontal y la base vertical
-                        // El canvas es 1200x2400. El centro es 600. La base es 2200.
-                        // moveTo x,y desplaza el contenido.
-                        // Queremos que el punto (600, 2200) esté en el centro-abajo de la pantalla
-
-                        // Ajuste manual para centrar en el tronco (aprox)
-                        // Estos valores dependen de cómo la librería maneja el offset
-                        zoomRef.current.moveTo(0, 200);
-                    } catch (e) {
-                        console.warn('Error resetting zoom:', e);
-                    }
-                }
-            }, 100);
-            return () => clearTimeout(timer);
-        }, [])
-    );
+    // 🎯 AUTO-CENTRADO ELIMINADO para mantener la posición del usuario
+    // useFocusEffect(...) eliminado a petición.
 
     const tree = treeData || storeTree;
 
