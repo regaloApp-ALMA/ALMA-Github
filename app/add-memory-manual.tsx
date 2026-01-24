@@ -106,6 +106,30 @@ export default function AddMemoryManualScreen() {
     return url.includes('.mp4') || url.includes('.mov') || url.includes('video') || url.includes('.m4v');
   };
 
+  // Algoritmo de Subida Robusto
+  const processMedia = async (mediaList: any[]) => {
+    const uploadedUrls: string[] = [];
+
+    for (const item of mediaList) {
+      // CASO A: Es una URL remota existente (http...) -> Mantenerla
+      if (typeof item === 'string' && item.startsWith('http')) {
+        uploadedUrls.push(item);
+        continue;
+      }
+
+      // CASO B: Es un archivo local nuevo (file:// o objeto asset) -> Subir
+      const uri = item.uri || item; // Manejar si es objeto o string
+      if (typeof uri === 'string' && (uri.startsWith('file://') || uri.startsWith('content://'))) {
+        // Usar helper de storage
+        if (user?.id) {
+          const publicUrl = await uploadMedia(uri, user.id, 'memories');
+          if (publicUrl) uploadedUrls.push(publicUrl);
+        }
+      }
+    }
+    return uploadedUrls;
+  };
+
   const handleSave = async () => {
     if (!title.trim() || !selectedBranch) {
       Alert.alert('Faltan datos', 'Escribe un título y elige una rama.');
@@ -119,71 +143,35 @@ export default function AddMemoryManualScreen() {
 
     setIsSaving(true);
     try {
-      // 📸 OPTIMIZACIÓN: Subir fotos/videos SOLO al guardar
-      let uploadedUrls: string[] = [];
+      setIsUploading(true);
 
-      if (mediaUrls.length > 0) {
-        setIsUploading(true);
-        try {
-          // Filtrar URIs locales (file://, content://, blob:, data:) y subirlas
-          const localUris = mediaUrls.filter(uri =>
-            uri.startsWith('file://') ||
-            uri.startsWith('content://') ||
-            uri.startsWith('blob:') ||
-            uri.startsWith('data:')
-          );
+      // 1. Procesar medios primero (Universal Fix)
+      const finalMediaUrls = await processMedia(mediaUrls);
 
-          const alreadyUploaded = mediaUrls.filter(uri =>
-            !uri.startsWith('file://') &&
-            !uri.startsWith('content://') &&
-            !uri.startsWith('blob:') &&
-            !uri.startsWith('data:')
-          );
+      setIsUploading(false); // Subida terminada
 
-          // Subir solo las que son locales
-          if (localUris.length > 0) {
-            console.log('📤 Subiendo', localUris.length, 'archivos al storage...');
-            const uploadPromises = localUris.map(uri =>
-              uploadMedia(uri, user.id, 'memories')
-            );
-            const uploadResults = await Promise.all(uploadPromises);
-            const validUploaded = uploadResults.filter(url => url !== null) as string[];
-            uploadedUrls = [...alreadyUploaded, ...validUploaded];
-            console.log('✅', validUploaded.length, 'archivos subidos exitosamente');
-          } else {
-            uploadedUrls = alreadyUploaded;
-          }
-        } catch (uploadError: any) {
-          console.error('❌ Error subiendo archivos:', uploadError);
-          Alert.alert('Error', 'No se pudieron subir algunos archivos. ' + (uploadError.message || ''));
-          setIsUploading(false);
-          setIsSaving(false);
-          return;
-        } finally {
-          setIsUploading(false);
-        }
-      }
-
-      // Guardar el recuerdo con las URLs públicas
-      const fruitId = await addFruit({
+      // 2. Guardar el recuerdo con las URLs públicas
+      await addFruit({
         title: title.trim(),
         description: description.trim(),
         branchId: selectedBranch,
-        mediaUrls: uploadedUrls,
+        mediaUrls: finalMediaUrls,
         isShared: false,
         position: { x: 0, y: 0 }
       } as any);
 
-      // Mostrar mensaje de éxito
+      // 3. Feedback y Navegación
       Alert.alert(
         '✅ Recuerdo guardado',
         'Tu recuerdo ha sido plantado en el árbol exitosamente.',
         [{
-          text: 'Ver recuerdo',
-          onPress: () => router.replace({ pathname: '/fruit-details', params: { id: fruitId } })
+          text: 'Volver al Árbol',
+          onPress: () => router.push('/(tabs)/tree')
         }]
       );
     } catch (error: any) {
+      setIsUploading(false);
+      console.error('Error saving memory:', error);
       Alert.alert('Error', `No se pudo guardar el recuerdo: ${error.message || 'Intenta de nuevo'}`);
     } finally {
       setIsSaving(false);

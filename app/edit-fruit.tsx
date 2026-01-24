@@ -125,6 +125,30 @@ export default function EditFruitScreen() {
     return url.includes('.mp4') || url.includes('.mov') || url.includes('video') || url.includes('.m4v');
   };
 
+  // Algoritmo de Subida Robusto
+  const processMedia = async (mediaList: any[]) => {
+    const uploadedUrls: string[] = [];
+
+    for (const item of mediaList) {
+      // CASO A: Es una URL remota existente (http...) -> Mantenerla
+      if (typeof item === 'string' && item.startsWith('http')) {
+        uploadedUrls.push(item);
+        continue;
+      }
+
+      // CASO B: Es un archivo local nuevo (file:// o objeto asset) -> Subir
+      const uri = item.uri || item; // Manejar si es objeto o string
+      if (typeof uri === 'string' && (uri.startsWith('file://') || uri.startsWith('content://'))) {
+        // Usar helper de storage
+        if (user?.id) {
+          const publicUrl = await uploadMedia(uri, user.id, 'memories');
+          if (publicUrl) uploadedUrls.push(publicUrl);
+        }
+      }
+    }
+    return uploadedUrls;
+  };
+
   const handleSave = async () => {
     if (!title.trim() || !selectedBranch) {
       Alert.alert('Faltan datos', 'Escribe un título y elige una rama.');
@@ -142,24 +166,18 @@ export default function EditFruitScreen() {
     }
 
     setIsSaving(true);
-    // Bloquear interacción con isLoading también si se desea, pero isSaving maneja el botón
     try {
-      // 1. GESTIÓN DE MEDIA: Comparar original vs actual
-      // Identificar qué URLs ya no están para borrarlas del Storage
+      // 1. GESTIÓN DE MEDIA: Borrar archivos eliminados
       const urlsToDelete = originalMediaUrls.filter(url => !mediaUrls.includes(url));
 
       if (urlsToDelete.length > 0) {
         console.log('🗑️ Eliminando', urlsToDelete.length, 'archivos del storage...');
-        // Extraer paths relativos para supabase.storage.remove
         const pathsToDelete: string[] = [];
         urlsToDelete.forEach(url => {
           try {
-            // Asumimos formato estándar de Supabase Storage: .../media/public/memories/USER_ID/FILE_NAME
-            // O nuestra estructura local. Necesitamos extraer el path relativo dentro del bucket 'memories'
             const bucketPath = 'memories';
             const parts = url.split(bucketPath + '/');
             if (parts.length === 2) {
-              // Limpiar query params si existen
               let cleanPath = parts[1];
               const qIndex = cleanPath.indexOf('?');
               if (qIndex !== -1) cleanPath = cleanPath.substring(0, qIndex);
@@ -177,26 +195,13 @@ export default function EditFruitScreen() {
 
           if (deleteError) {
             console.warn('⚠️ Error borrando archivos antiguos:', deleteError);
-            // No bloqueamos el guardado por esto, pero lo loggeamos
-          } else {
-            console.log('✅ Archivos eliminados correctamente');
           }
         }
       }
 
       // 2. LÓGICA DE SUBIDA HÍBRIDA (Update Fruit)
-      const finalMediaUrls: string[] = [];
-
-      for (const file of mediaUrls) {
-        if (typeof file === 'string' && file.startsWith('http')) {
-          // A) Es una imagen antigua (URL remota), la mantenemos.
-          finalMediaUrls.push(file);
-        } else if (typeof file === 'string' && (file.startsWith('file://') || file.startsWith('content://'))) {
-          // B) Es una imagen NUEVA (Local), hay que subirla.
-          const publicUrl = await uploadMedia(file, user.id, 'memories');
-          if (publicUrl) finalMediaUrls.push(publicUrl);
-        }
-      }
+      // Usamos processMedia que maneja tanto URLs existentes como nuevos uploads
+      const finalMediaUrls = await processMedia(mediaUrls);
 
       console.log('📊 URLs finales:', finalMediaUrls.length);
 
@@ -216,7 +221,6 @@ export default function EditFruitScreen() {
         [{
           text: 'OK',
           onPress: () => {
-            // Forzar refresco del árbol si es necesario, aunque updateFruit ya lo hace
             router.back();
           }
         }]

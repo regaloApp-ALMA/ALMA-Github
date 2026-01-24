@@ -70,13 +70,18 @@ export default function EditBranchScreen() {
                 '✅ Rama actualizada',
                 'Los cambios han sido guardados exitosamente.',
                 [{
-                    text: 'OK',
+                    text: 'Volver',
                     onPress: () => {
-                        router.back();
+                        if (router.canDismiss()) {
+                            router.dismiss();
+                        } else {
+                            router.back();
+                        }
                     }
                 }]
             );
         } catch (error: any) {
+            console.error('Error updating branch:', error);
             Alert.alert('Error', `No se pudo actualizar la rama: ${error.message || 'Intenta de nuevo'}`);
         } finally {
             setIsSaving(false);
