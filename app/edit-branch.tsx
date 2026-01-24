@@ -10,9 +10,9 @@ import { Save, Palette } from 'lucide-react-native';
 const BRANCH_COLORS = [
     '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7',
     '#DFE6E9', '#74B9FF', '#A29BFE', '#FD79A8', '#FDCB6E',
-    '#6C5CE7', '#00B894', '#00CEC9', '#0984E3', '#6C5CE7',
-    '#E17055', '#FF7675', '#FD79A8', '#FDCB6E', '#55EFC4',
-    '#81ECEC', '#74B9FF', '#A29BFE', '#DFE6E9', '#B2BEC3'
+    '#6C5CE7', '#00B894', '#00CEC9', '#0984E3',
+    '#E17055', '#FF7675', '#55EFC4',
+    '#81ECEC', '#B2BEC3'
 ];
 
 export default function EditBranchScreen() {

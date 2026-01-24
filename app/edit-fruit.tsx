@@ -184,44 +184,20 @@ export default function EditFruitScreen() {
         }
       }
 
-      // 2. SUBIR NUEVOS ARCHIVOS
-      // Separar URLs locales (necesitan subida) de las remotas (ya están listas)
-      const localUris = mediaUrls.filter(uri =>
-        uri.startsWith('file://') ||
-        uri.startsWith('content://') ||
-        uri.startsWith('blob:') ||
-        uri.startsWith('data:')
-      );
+      // 2. LÓGICA DE SUBIDA HÍBRIDA (Update Fruit)
+      const finalMediaUrls: string[] = [];
 
-      const remoteUrls = mediaUrls.filter(uri =>
-        !uri.startsWith('file://') &&
-        !uri.startsWith('content://') &&
-        !uri.startsWith('blob:') &&
-        !uri.startsWith('data:')
-      );
-
-      let newUploadedUrls: string[] = [];
-      if (localUris.length > 0) {
-        setIsUploading(true);
-        console.log('📤 Subiendo', localUris.length, 'archivos nuevos...');
-
-        // Usar map para concurrencia controlada
-        const uploadPromises = localUris.map(uri =>
-          uploadMedia(uri, user.id, 'memories')
-        );
-
-        const results = await Promise.all(uploadPromises);
-        // Filtrar nulos (fallos)
-        newUploadedUrls = results.filter(u => u !== null) as string[];
-
-        if (newUploadedUrls.length !== localUris.length) {
-          Alert.alert('Advertencia', 'Algunos archivos no se pudieron subir.');
+      for (const file of mediaUrls) {
+        if (typeof file === 'string' && file.startsWith('http')) {
+          // A) Es una imagen antigua (URL remota), la mantenemos.
+          finalMediaUrls.push(file);
+        } else if (typeof file === 'string' && (file.startsWith('file://') || file.startsWith('content://'))) {
+          // B) Es una imagen NUEVA (Local), hay que subirla.
+          const publicUrl = await uploadMedia(file, user.id, 'memories');
+          if (publicUrl) finalMediaUrls.push(publicUrl);
         }
-        setIsUploading(false);
       }
 
-      // 3. COMBINAR URLS FINALES
-      const finalMediaUrls = [...remoteUrls, ...newUploadedUrls];
       console.log('📊 URLs finales:', finalMediaUrls.length);
 
       // 4. ACTUALIZAR EN BASE DE DATOS
@@ -229,7 +205,7 @@ export default function EditFruitScreen() {
         title: title.trim(),
         description: description.trim(),
         branchId: selectedBranch,
-        mediaUrls: finalMediaUrls,
+        mediaUrls: finalMediaUrls, // Usar la lista procesada
         isPublic: isPublic,
       });
 
@@ -350,7 +326,7 @@ export default function EditFruitScreen() {
             <Text style={[styles.label, isDarkMode && styles.textWhite, { marginBottom: 2 }]}>
               Fotos y Videos {mediaUrls.length > 0 && `(${mediaUrls.length})`}
             </Text>
-            <Text style={{ fontSize: 12, color: colors.gray, opacity: 0.8 }}>
+            <Text style={{ fontSize: 13, color: '#E67C00', fontWeight: 'bold' }}>
               Límites: Máx 10 fotos, Máx 3 videos (15s c/u).
             </Text>
           </View>

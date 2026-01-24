@@ -26,14 +26,14 @@
       "package": "app.rork.arbol-de-vida-alma-k2bf03xp"
     },
     "web": {
-      "favicon": "./assets/favicon.png",
+      "favicon": "/icon.png",
       "title": "ALMA",
       "name": "ALMA",
       "shortName": "ALMA",
       "display": "standalone",
       "themeColor": "#FFFFFF",
       "backgroundColor": "#FFFFFF",
-      "appleTouchIcon": "./assets/icon.png",
+      "appleTouchIcon": "/icon.png",
       "meta": {
         "apple-mobile-web-app-capable": "yes",
         "apple-mobile-web-app-status-bar-style": "black-translucent"
