@@ -1,149 +1,76 @@
 import { supabase } from './supabase';
-// CAMBIO CLAVE: Importamos desde 'legacy' para evitar el error de deprecación
-import * as FileSystem from 'expo-file-system';
-import { decode } from 'base64-arraybuffer';
-import * as ImageManipulator from 'expo-image-manipulator';
-import { Platform } from 'react-native';
-
-// Función helper para obtener el formato correcto
-const getImageFormat = () => {
-    try {
-        if (ImageManipulator && ImageManipulator.SaveFormat) {
-            return ImageManipulator.SaveFormat.JPEG;
-        }
-    } catch (e) {
-        // Fallback
-    }
-    return 'jpeg' as any;
-};
+import { Alert } from 'react-native';
 
 /**
- * Detecta si un URI es un vídeo basándose en la extensión o el tipo MIME
+ * Sube un archivo local a Supabase Storage y devuelve la URL pública.
+ * Implementa el patrón Fetch-to-Blob necesario para React Native / Expo.
  */
-const isVideoFile = (uri: string): boolean => {
-    const videoExtensions = ['.mp4', '.mov', '.m4v', '.avi', '.mkv', '.webm'];
-    const lowerUri = uri.toLowerCase();
-    return videoExtensions.some(ext => lowerUri.includes(ext)) || lowerUri.includes('video');
-};
-
-export const uploadMedia = async (uri: string, userId: string, bucket: string): Promise<string | null> => {
-    // Validar que el bucket esté especificado
-    if (!bucket || (bucket !== 'avatars' && bucket !== 'memories')) {
-        console.error('❌ Error: bucket debe ser "avatars" o "memories". Recibido:', bucket);
-        throw new Error(`Bucket inválido: ${bucket}. Debe ser "avatars" o "memories".`);
-    }
+export const uploadMedia = async (uri: string, bucket: string = 'memories'): Promise<string | null> => {
     try {
-        // Detectar si es video (los vídeos ya vienen comprimidos del picker nativo)
-        const isVideo = isVideoFile(uri);
+        // 1. Validación básica
+        if (!uri) return null;
 
-        if (isVideo) {
-            // Para videos: subir directamente sin compresión adicional
-            // Para videos: subir directamente sin compresión adicional
-            let fileData: any;
+        // 2. Generar nombre único y ruta
+        const ext = uri.split('.').pop()?.toLowerCase() || 'jpg';
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+        const path = `${fileName}`;
 
-            if (Platform.OS === 'web') {
-                const response = await fetch(uri);
-                const blob = await response.blob();
-                fileData = blob;
-            } else {
-                const base64 = await FileSystem.readAsStringAsync(uri, {
-                    encoding: 'base64' as any,
-                });
-                fileData = decode(base64);
-            }
+        // 3. CONVERSIÓN CRÍTICA (Magic Fix) 🪄
+        // En Expo, debemos hacer un fetch a la URI local para obtener el Blob
+        const response = await fetch(uri);
+        const blob = await response.blob();
 
-            // Detectar extensión del archivo
-            const fileExt = uri.split('.').pop()?.toLowerCase() || 'mp4';
-            const fileName = `${userId}/${Date.now()}.${fileExt}`;
-
-            // Determinar content type
-            const contentType = fileExt === 'mov' ? 'video/quicktime' :
-                fileExt === 'm4v' ? 'video/x-m4v' :
-                    'video/mp4';
-
-            const { data, error: uploadError } = await supabase.storage
-                .from(bucket)
-                .upload(fileName, fileData, {
-                    contentType: contentType,
-                    upsert: true
-                });
-
-            if (uploadError) {
-                console.error('Supabase Upload Error (video):', uploadError);
-                throw uploadError;
-            }
-
-            const { data: urlData } = supabase.storage
-                .from(bucket)
-                .getPublicUrl(fileName);
-
-            console.log('🎥 Video Public URL:', urlData.publicUrl);
-            return urlData.publicUrl;
-        }
-
-        // Para imágenes: comprimir y redimensionar
-        const manipulatedImage = await ImageManipulator.manipulateAsync(
-            uri,
-            [
-                { resize: { width: 1080 } }, // Redimensionar a máximo 1080px de ancho
-            ],
-            {
-                compress: 0.7, // Comprimir calidad al 70%
-                format: getImageFormat(),
-            }
-        );
-
-        // Leer el archivo comprimido como Base64 usando la API Legacy
-        const base64 = await FileSystem.readAsStringAsync(manipulatedImage.uri, {
-            encoding: 'base64' as any,
-        });
-
-        // Convertir Base64 a ArrayBuffer
-        const fileData = decode(base64);
-
-        // Generar nombre y ruta
-        const fileExt = 'jpg'; // Siempre JPEG después de la manipulación
-        const fileName = `${userId}/${Date.now()}.${fileExt}`;
-
-        // Subir a Supabase
-        const { data, error: uploadError } = await supabase.storage
+        // 4. Subida a Supabase
+        // Upsert false para evitar sobreescribir (aunque el nombre es único)
+        const { data, error } = await supabase.storage
             .from(bucket)
-            .upload(fileName, fileData, {
-                contentType: 'image/jpeg',
-                upsert: true
+            .upload(path, blob, {
+                contentType: blob.type || 'image/jpeg', // Asegurar tipo MIME adecuado
+                upsert: false,
             });
 
-        if (uploadError) {
-            console.error('Supabase Upload Error (image):', uploadError);
-            throw uploadError;
+        if (error) {
+            console.error("❌ Error Supabase Upload:", error.message);
+            throw error;
         }
 
-        // Obtener la URL pública
-        const { data: urlData } = supabase.storage
+        // 5. Obtener URL Pública
+        const { data: publicData } = supabase.storage
             .from(bucket)
-            .getPublicUrl(fileName);
+            .getPublicUrl(path);
 
-        console.log('📸 Image Public URL:', urlData.publicUrl);
-        return urlData.publicUrl;
+        console.log("✅ Subida exitosa:", publicData.publicUrl);
+        return publicData.publicUrl;
 
-    } catch (error) {
-        console.error('Error general subiendo media:', error);
+    } catch (error: any) {
+        console.error("❌ Error en uploadMedia:", error);
+        Alert.alert("Error de Subida", "No se pudo subir la imagen. Verifica tu conexión.");
         return null;
     }
 };
 
-// Nueva función para subir múltiples archivos
-export const uploadMultipleMedia = async (
-    uris: string[],
-    userId: string,
-    bucket: string // OBLIGATORIO: debe ser 'avatars' o 'memories'
-): Promise<string[]> => {
-    // Validar que el bucket esté especificado
-    if (!bucket || (bucket !== 'avatars' && bucket !== 'memories')) {
-        console.error('❌ Error: bucket debe ser "avatars" o "memories". Recibido:', bucket);
-        throw new Error(`Bucket inválido: ${bucket}. Debe ser "avatars" o "memories".`);
+/**
+ * Procesa un lote de imágenes (mezcla de nuevas y viejas)
+ * Devuelve un array con TODAS las URLs finales (remotas y recién subidas).
+ */
+export const processMediaBatch = async (mediaList: any[], bucket: string = 'memories'): Promise<string[]> => {
+    const finalUrls: string[] = [];
+
+    for (const item of mediaList) {
+        // A) Si ya es una URL remota, la guardamos
+        if (typeof item === 'string' && item.startsWith('http')) {
+            finalUrls.push(item);
+            continue;
+        }
+
+        // B) Si es local, intentamos subirla
+        // Manejamos si viene como string directo o objeto { uri: ... }
+        const uriToUpload = typeof item === 'object' && item.uri ? item.uri : item;
+
+        if (typeof uriToUpload === 'string' && uriToUpload) {
+            const publicUrl = await uploadMedia(uriToUpload, bucket);
+            if (publicUrl) finalUrls.push(publicUrl);
+        }
     }
-    const uploadPromises = uris.map(uri => uploadMedia(uri, userId, bucket));
-    const results = await Promise.all(uploadPromises);
-    return results.filter(url => url !== null) as string[];
+    return finalUrls;
 };

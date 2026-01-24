@@ -6,7 +6,7 @@ import colors from '@/constants/colors';
 import { useThemeStore } from '@/stores/themeStore';
 import { Image as ImageIcon, X, Video, Save, Lock, Globe } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { uploadMedia } from '@/lib/storageHelper';
+import { uploadMedia, processMediaBatch } from '@/lib/storageHelper';
 import { useUserStore } from '@/stores/userStore';
 import { processMediaAsset } from '@/lib/mediaHelper';
 import { supabase } from '@/lib/supabase';
@@ -125,29 +125,7 @@ export default function EditFruitScreen() {
     return url.includes('.mp4') || url.includes('.mov') || url.includes('video') || url.includes('.m4v');
   };
 
-  // Algoritmo de Subida Robusto
-  const processMedia = async (mediaList: any[]) => {
-    const uploadedUrls: string[] = [];
 
-    for (const item of mediaList) {
-      // CASO A: Es una URL remota existente (http...) -> Mantenerla
-      if (typeof item === 'string' && item.startsWith('http')) {
-        uploadedUrls.push(item);
-        continue;
-      }
-
-      // CASO B: Es un archivo local nuevo (file:// o objeto asset) -> Subir
-      const uri = item.uri || item; // Manejar si es objeto o string
-      if (typeof uri === 'string' && (uri.startsWith('file://') || uri.startsWith('content://'))) {
-        // Usar helper de storage
-        if (user?.id) {
-          const publicUrl = await uploadMedia(uri, user.id, 'memories');
-          if (publicUrl) uploadedUrls.push(publicUrl);
-        }
-      }
-    }
-    return uploadedUrls;
-  };
 
   const handleSave = async () => {
     if (!title.trim() || !selectedBranch) {
@@ -200,8 +178,8 @@ export default function EditFruitScreen() {
       }
 
       // 2. LÓGICA DE SUBIDA HÍBRIDA (Update Fruit)
-      // Usamos processMedia que maneja tanto URLs existentes como nuevos uploads
-      const finalMediaUrls = await processMedia(mediaUrls);
+      // USAMOS EL NUEVO HELPER IMPORTADO
+      const finalMediaUrls = await processMediaBatch(mediaUrls, 'memories');
 
       console.log('📊 URLs finales:', finalMediaUrls.length);
 

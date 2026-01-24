@@ -6,7 +6,7 @@ import colors from '@/constants/colors';
 import { useThemeStore } from '@/stores/themeStore';
 import { Image as ImageIcon, X, Video } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { uploadMedia } from '@/lib/storageHelper';
+import { uploadMedia, processMediaBatch } from '@/lib/storageHelper';
 import { useUserStore } from '@/stores/userStore';
 import { processMediaAsset } from '@/lib/mediaHelper';
 
@@ -106,29 +106,7 @@ export default function AddMemoryManualScreen() {
     return url.includes('.mp4') || url.includes('.mov') || url.includes('video') || url.includes('.m4v');
   };
 
-  // Algoritmo de Subida Robusto
-  const processMedia = async (mediaList: any[]) => {
-    const uploadedUrls: string[] = [];
-
-    for (const item of mediaList) {
-      // CASO A: Es una URL remota existente (http...) -> Mantenerla
-      if (typeof item === 'string' && item.startsWith('http')) {
-        uploadedUrls.push(item);
-        continue;
-      }
-
-      // CASO B: Es un archivo local nuevo (file:// o objeto asset) -> Subir
-      const uri = item.uri || item; // Manejar si es objeto o string
-      if (typeof uri === 'string' && (uri.startsWith('file://') || uri.startsWith('content://'))) {
-        // Usar helper de storage
-        if (user?.id) {
-          const publicUrl = await uploadMedia(uri, user.id, 'memories');
-          if (publicUrl) uploadedUrls.push(publicUrl);
-        }
-      }
-    }
-    return uploadedUrls;
-  };
+  // No longer need local processMedia function
 
   const handleSave = async () => {
     if (!title.trim() || !selectedBranch) {
@@ -145,8 +123,8 @@ export default function AddMemoryManualScreen() {
     try {
       setIsUploading(true);
 
-      // 1. Procesar medios primero (Universal Fix)
-      const finalMediaUrls = await processMedia(mediaUrls);
+      // 1. Procesar medios (Universal Fix usando Helper Centralizado)
+      const finalMediaUrls = await processMediaBatch(mediaUrls, 'memories');
 
       setIsUploading(false); // Subida terminada
 
