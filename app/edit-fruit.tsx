@@ -9,6 +9,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { uploadMedia } from '@/lib/storageHelper';
 import { useUserStore } from '@/stores/userStore';
 import { processMediaAsset } from '@/lib/mediaHelper';
+import { supabase } from '@/lib/supabase';
 
 export default function EditFruitScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -141,11 +142,50 @@ export default function EditFruitScreen() {
     }
 
     setIsSaving(true);
+    // Bloquear interacción con isLoading también si se desea, pero isSaving maneja el botón
     try {
-      // 📸 LÓGICA COMPLETA: Comparar original vs nuevo y subir solo lo necesario
-      let finalMediaUrls: string[] = [];
+      // 1. GESTIÓN DE MEDIA: Comparar original vs actual
+      // Identificar qué URLs ya no están para borrarlas del Storage
+      const urlsToDelete = originalMediaUrls.filter(url => !mediaUrls.includes(url));
 
-      // Separar URLs locales (file://, content://, blob:, data:) de las remotas (https://)
+      if (urlsToDelete.length > 0) {
+        console.log('🗑️ Eliminando', urlsToDelete.length, 'archivos del storage...');
+        // Extraer paths relativos para supabase.storage.remove
+        const pathsToDelete: string[] = [];
+        urlsToDelete.forEach(url => {
+          try {
+            // Asumimos formato estándar de Supabase Storage: .../media/public/memories/USER_ID/FILE_NAME
+            // O nuestra estructura local. Necesitamos extraer el path relativo dentro del bucket 'memories'
+            const bucketPath = 'memories';
+            const parts = url.split(bucketPath + '/');
+            if (parts.length === 2) {
+              // Limpiar query params si existen
+              let cleanPath = parts[1];
+              const qIndex = cleanPath.indexOf('?');
+              if (qIndex !== -1) cleanPath = cleanPath.substring(0, qIndex);
+              pathsToDelete.push(decodeURIComponent(cleanPath));
+            }
+          } catch (e) {
+            console.warn('Error parseando URL para borrar:', url);
+          }
+        });
+
+        if (pathsToDelete.length > 0) {
+          const { error: deleteError } = await supabase.storage
+            .from('memories')
+            .remove(pathsToDelete);
+
+          if (deleteError) {
+            console.warn('⚠️ Error borrando archivos antiguos:', deleteError);
+            // No bloqueamos el guardado por esto, pero lo loggeamos
+          } else {
+            console.log('✅ Archivos eliminados correctamente');
+          }
+        }
+      }
+
+      // 2. SUBIR NUEVOS ARCHIVOS
+      // Separar URLs locales (necesitan subida) de las remotas (ya están listas)
       const localUris = mediaUrls.filter(uri =>
         uri.startsWith('file://') ||
         uri.startsWith('content://') ||
@@ -160,59 +200,55 @@ export default function EditFruitScreen() {
         !uri.startsWith('data:')
       );
 
-      // Subir nuevas imágenes locales
+      let newUploadedUrls: string[] = [];
       if (localUris.length > 0) {
         setIsUploading(true);
-        try {
-          console.log('📤 Subiendo', localUris.length, 'archivos nuevos al storage...');
-          const uploadPromises = localUris.map(uri =>
-            uploadMedia(uri, user.id, 'memories')
-          );
-          const uploadResults = await Promise.all(uploadPromises);
-          const validUploaded = uploadResults.filter(url => url !== null) as string[];
-          console.log('✅', validUploaded.length, 'archivos nuevos subidos exitosamente');
+        console.log('📤 Subiendo', localUris.length, 'archivos nuevos...');
 
-          // Combinar URLs remotas existentes + nuevas subidas
-          finalMediaUrls = [...remoteUrls, ...validUploaded];
-        } catch (uploadError: any) {
-          console.error('❌ Error subiendo archivos:', uploadError);
-          Alert.alert('Error', 'No se pudieron subir algunos archivos. ' + (uploadError.message || ''));
-          setIsUploading(false);
-          setIsSaving(false);
-          return;
-        } finally {
-          setIsUploading(false);
+        // Usar map para concurrencia controlada
+        const uploadPromises = localUris.map(uri =>
+          uploadMedia(uri, user.id, 'memories')
+        );
+
+        const results = await Promise.all(uploadPromises);
+        // Filtrar nulos (fallos)
+        newUploadedUrls = results.filter(u => u !== null) as string[];
+
+        if (newUploadedUrls.length !== localUris.length) {
+          Alert.alert('Advertencia', 'Algunos archivos no se pudieron subir.');
         }
-      } else {
-        // No hay nuevas imágenes, solo usar las remotas (que ya están filtradas)
-        finalMediaUrls = remoteUrls;
+        setIsUploading(false);
       }
 
-      console.log('📊 URLs finales a guardar:', finalMediaUrls.length);
-      console.log('📊 URLs originales:', originalMediaUrls.length);
+      // 3. COMBINAR URLS FINALES
+      const finalMediaUrls = [...remoteUrls, ...newUploadedUrls];
+      console.log('📊 URLs finales:', finalMediaUrls.length);
 
+      // 4. ACTUALIZAR EN BASE DE DATOS
       await updateFruit(id, {
         title: title.trim(),
         description: description.trim(),
         branchId: selectedBranch,
-        mediaUrls: finalMediaUrls, // Array final con solo las URLs que queremos mantener
+        mediaUrls: finalMediaUrls,
         isPublic: isPublic,
       });
 
-      // Mostrar mensaje de éxito
+      // 5. FEEDBACK Y NAVEGACIÓN
       Alert.alert(
-        '✅ Cambios guardados',
-        'Tu recuerdo ha sido actualizado exitosamente.',
+        '✅ Actualizado',
+        'El recuerdo se ha modificado correctamente',
         [{
-          text: 'Ver recuerdo',
+          text: 'OK',
           onPress: () => {
-            router.dismissAll();
-            router.replace({ pathname: '/fruit-details', params: { id: id } });
+            // Forzar refresco del árbol si es necesario, aunque updateFruit ya lo hace
+            router.back();
           }
         }]
       );
+
     } catch (error: any) {
-      Alert.alert('Error', `No se pudo actualizar el recuerdo: ${error.message || 'Intenta de nuevo'}`);
+      console.error('❌ Error guardando cambios:', error);
+      Alert.alert('Error', 'No se pudieron guardar los cambios: ' + (error.message || 'Error desconocido'));
     } finally {
       setIsSaving(false);
     }

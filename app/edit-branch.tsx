@@ -64,22 +64,21 @@ export default function EditBranchScreen() {
             await updateBranch(id, {
                 name: name.trim(),
                 color: selectedColor,
-                // position: se mantiene la que tenga o se recalcula en treeStore, no se edita aquí
             });
 
             Alert.alert(
                 '✅ Rama actualizada',
                 'Los cambios han sido guardados exitosamente.',
                 [{
-                    text: 'Ver rama',
+                    text: 'OK',
                     onPress: () => {
-                        router.dismissAll();
-                        router.push({ pathname: '/branch-details', params: { id } });
+                        router.back();
                     }
                 }]
             );
         } catch (error: any) {
             Alert.alert('Error', `No se pudo actualizar la rama: ${error.message || 'Intenta de nuevo'}`);
+        } finally {
             setIsSaving(false);
         }
     };
