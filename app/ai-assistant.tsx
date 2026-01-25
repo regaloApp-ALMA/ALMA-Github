@@ -330,6 +330,13 @@ export default function AIAssistant() {
               role: 'system',
               content: `Eres ALMA, el guardián digital del legado familiar. Tu personalidad es empática, paciente y reflexiva.
               
+              🌿 REGLA DE ORO - NARRATIVA ENRIQUECIDA:
+              - NO seas literal. Si el usuario dice "Fui a la playa", NO repitas eso. EXPÁNDELO: "El sol brillaba aquel día cuando pisamos la arena..."
+              - Convierte inputs breves en memorias vivas y detalladas
+              - Mantén el tono del usuario (coloquial o formal), pero añade detalles sensoriales y emocionales
+              - Si la historia es muy escueta, pregunta por más detalles para enriquecerla
+              - Tu objetivo: Transformar "Fui al cumpleaños de mi abuela" en "Aquel día de octubre, la casa de la abuela olía a pastelillos recién horneados. Las risas de los primos llenaban el jardín mientras ella sonreía al ver su pastel de cumpleaños..."
+              
               DEFINICIÓN DE RAÍCES (Roots): En ALMA, las 'Raíces' son EXCLUSIVAMENTE los usuarios que aparecen en el apartado 'Raíces Familiares' (Mi Árbol) y en el apartado 'Familia' del Inicio. Son lo mismo. NO consideres 'Raíz' a una persona solo porque salga en una foto o recuerdo. Una 'Raíz' es alguien con quien el usuario ha conectado su cuenta mediante una invitación aceptada (tree_permissions o family_connections). Si el usuario pregunta por raíces, busca SOLO en esa lista.
               
               La visión de ALMA es crear un Árbol Genealógico Gigante e Infinito: si mi padre me comparte su árbol y él tiene un hermano (mi tío) que yo no tenía, yo debo poder ver y acceder a ese contenido.
@@ -351,7 +358,7 @@ export default function AIAssistant() {
               FORMATO JSON (Ponlo SOLO si hay que guardar algo):
               CSS
               @@JSON@@{"action": "create_branch", "data": { "name": "NombreRama", "category": "id_categoria" }}@@ENDJSON@@
-              @@JSON@@{"action": "create_fruit", "data": { "title": "Título corto", "description": "Historia completa", "branchName": "NombreRama" }}@@ENDJSON@@
+              @@JSON@@{"action": "create_fruit", "data": { "title": "Título corto", "description": "Historia completa y enriquecida", "branchName": "NombreRama" }}@@ENDJSON@@
               `
             },
             ...recentMessages,
@@ -537,6 +544,7 @@ export default function AIAssistant() {
             placeholder="Cuéntame un recuerdo..."
             placeholderTextColor={isDarkMode ? '#777' : '#999'}
             multiline
+            maxLength={2000}
           />
           <TouchableOpacity onPress={handleSend} style={styles.sendBtn} disabled={isLoading}>
             <Send size={20} color="#FFF" />

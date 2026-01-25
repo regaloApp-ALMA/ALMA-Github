@@ -67,17 +67,11 @@ export default function EditBranchScreen() {
             });
 
             Alert.alert(
-                '✅ Rama actualizada',
-                'Los cambios han sido guardados exitosamente.',
+                '¡Éxito!',
+                'Rama actualizada correctamente. Vamos al árbol.',
                 [{
-                    text: 'Volver',
-                    onPress: () => {
-                        if (router.canDismiss()) {
-                            router.dismiss();
-                        } else {
-                            router.back();
-                        }
-                    }
+                    text: 'Entendido',
+                    onPress: () => router.navigate('/(tabs)/tree')
                 }]
             );
         } catch (error: any) {
@@ -115,6 +109,7 @@ export default function EditBranchScreen() {
                         onChangeText={setName}
                         placeholder="Nombre de la rama"
                         placeholderTextColor={isDarkMode ? '#666' : colors.gray}
+                        maxLength={100}
                     />
                 </View>
 

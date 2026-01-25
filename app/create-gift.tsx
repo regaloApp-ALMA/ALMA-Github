@@ -96,7 +96,7 @@ export default function CreateGiftScreen() {
 
           if (processedUris.length > 0) {
             const uploadPromises = processedUris.map(uri =>
-              uploadMedia(uri, user.id, 'memories')
+              uploadMedia(uri, 'memories')
             );
             const uploadedUrls = await Promise.all(uploadPromises);
             const validUrls = uploadedUrls.filter(url => url !== null) as string[];
@@ -229,7 +229,7 @@ export default function CreateGiftScreen() {
       Alert.alert(
         successTitle,
         successMsg,
-        [{ text: 'OK', onPress: () => router.back() }]
+        [{ text: 'Entendido', onPress: () => router.navigate('/(tabs)') }]
       );
     } catch (error: any) {
       Alert.alert('Error', error.message);
@@ -339,6 +339,7 @@ export default function CreateGiftScreen() {
             onChangeText={setTitle}
             placeholder={selectedOption === 'message' ? "Ej: Para leer en tu boda" : "Ej: Un recuerdo especial"}
             placeholderTextColor={isDarkMode ? '#666' : colors.gray}
+            maxLength={100}
           />
         </View>
 
@@ -356,6 +357,7 @@ export default function CreateGiftScreen() {
             multiline
             numberOfLines={6}
             textAlignVertical="top"
+            maxLength={5000}
           />
         </View>
 
@@ -370,6 +372,7 @@ export default function CreateGiftScreen() {
             placeholderTextColor={isDarkMode ? '#666' : colors.gray}
             keyboardType="email-address"
             autoCapitalize="none"
+            maxLength={100}
           />
         </View>
 

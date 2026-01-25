@@ -194,13 +194,11 @@ export default function EditFruitScreen() {
 
       // 5. FEEDBACK Y NAVEGACIÓN
       Alert.alert(
-        '✅ Actualizado',
-        'El recuerdo se ha modificado correctamente',
+        '¡Éxito!',
+        'Recuerdo actualizado correctamente. Vamos al árbol.',
         [{
-          text: 'OK',
-          onPress: () => {
-            router.back();
-          }
+          text: 'Entendido',
+          onPress: () => router.navigate('/(tabs)/tree')
         }]
       );
 
@@ -239,6 +237,7 @@ export default function EditFruitScreen() {
             onChangeText={setTitle}
             placeholder="Ej: El día de la graduación"
             placeholderTextColor={isDarkMode ? '#666' : colors.gray}
+            maxLength={100}
           />
         </View>
 
@@ -271,6 +270,7 @@ export default function EditFruitScreen() {
             multiline
             placeholder="Cuéntalo todo..."
             placeholderTextColor={isDarkMode ? '#666' : colors.gray}
+            maxLength={5000}
           />
         </View>
 

@@ -46,19 +46,47 @@ export default function HomeScreen() {
   // Asegurar que el árbol se cargue al enfocar la pantalla
   useFocusEffect(
     React.useCallback(() => {
-      // Actualizar datos cada vez que se enfoca la pantalla
-      fetchHomeData();
-      if (!tree) {
-        fetchMyTree();
-      }
-      // No necesitamos limpieza en este caso
-    }, [tree]) // Quitamos fetchMyTree de deps para evitar ciclos indeseados si cambia la ref
+      let isActive = true;
+
+      const refreshData = async () => {
+        try {
+          await fetchHomeData();
+          if (!tree && isActive) {
+            await fetchMyTree();
+          }
+        } catch (error) {
+          console.error('Error refreshing data:', error);
+        }
+      };
+
+      refreshData();
+
+      return () => {
+        isActive = false; // ✅ Cleanup on unfocus
+      };
+    }, [])
   );
 
   useEffect(() => {
-    fetchHomeData();
-    fetchMyTree(); // Asegurar que el árbol esté cargado
-    refreshIdeas();
+    let isMounted = true;
+
+    const loadInitialData = async () => {
+      try {
+        await fetchHomeData();
+        await fetchMyTree();
+        if (isMounted) {
+          refreshIdeas();
+        }
+      } catch (error) {
+        console.error('Error loading initial data:', error);
+      }
+    };
+
+    loadInitialData();
+
+    return () => {
+      isMounted = false; // ✅ Prevent state updates after unmount
+    };
   }, []);
 
   const onRefresh = async () => {

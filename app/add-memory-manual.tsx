@@ -140,11 +140,11 @@ export default function AddMemoryManualScreen() {
 
       // 3. Feedback y Navegación
       Alert.alert(
-        '✅ Recuerdo guardado',
-        'Tu recuerdo ha sido plantado en el árbol exitosamente.',
+        '¡Éxito!',
+        'Recuerdo guardado correctamente. Vamos al árbol.',
         [{
-          text: 'Volver al Árbol',
-          onPress: () => router.push('/(tabs)/tree')
+          text: 'Entendido',
+          onPress: () => router.navigate('/(tabs)/tree')
         }]
       );
     } catch (error: any) {
@@ -177,6 +177,7 @@ export default function AddMemoryManualScreen() {
             onChangeText={setTitle}
             placeholder="Ej: El día de la graduación"
             placeholderTextColor={colors.gray}
+            maxLength={100}
           />
         </View>
 
@@ -209,6 +210,7 @@ export default function AddMemoryManualScreen() {
             multiline
             placeholder="Cuéntalo todo..."
             placeholderTextColor={colors.gray}
+            maxLength={5000}
           />
         </View>
 
